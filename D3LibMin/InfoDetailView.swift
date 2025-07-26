@@ -12,19 +12,35 @@ struct InfoDetailView: View {
     @State var item: InfoItem
     @State private var showingDeleteAlert = false
     @State private var editingDetails: [String] = []
-    @State private var newDetailText = ""
+    @State private var newDetailName = ""
+    @State private var newDetailContent = ""
     @State private var isEditing = false
-    @FocusState private var isTextFieldFocused: Bool
+    @FocusState private var isNameFieldFocused: Bool
+    @FocusState private var isContentFieldFocused: Bool
     
     private func addNewDetail() {
-        if !newDetailText.isEmpty {
-            editingDetails.append(newDetailText)
-            newDetailText = ""
-            // 重新聚焦到输入框，方便连续添加
+        if !newDetailName.isEmpty && !newDetailContent.isEmpty {
+            let detailText = "\(newDetailName): \(newDetailContent)"
+            editingDetails.append(detailText)
+            newDetailName = ""
+            newDetailContent = ""
+            // 重新聚焦到名称输入框，方便连续添加
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                isTextFieldFocused = true
+                isNameFieldFocused = true
             }
         }
+    }
+    
+    private func handleNameFieldSubmit() {
+        // 当名称字段换行时，跳转到内容字段
+        if !newDetailName.isEmpty {
+            isContentFieldFocused = true
+        }
+    }
+    
+    private func handleContentFieldSubmit() {
+        // 当内容字段换行时，保存当前条目并跳转到下一个名称字段
+        addNewDetail()
     }
     
     var body: some View {
@@ -53,7 +69,7 @@ struct InfoDetailView: View {
                         isEditing.toggle()
                         if isEditing {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isTextFieldFocused = true
+                                isNameFieldFocused = true
                             }
                         }
                     }) {
@@ -98,11 +114,11 @@ struct InfoDetailView: View {
                         }
                         
                         Text(item.title)
-                            .font(.system(size: 20, weight: .medium))
+                            .font(.spaceGroteskMedium(size: 20))
                             .foregroundColor(.primary)
                         
                         Text(item.subtitle)
-                            .font(.system(size: 16, weight: .regular))
+                            .font(.spaceGroteskMedium(size: 14))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -131,21 +147,39 @@ struct InfoDetailView: View {
                             }
                             
                             if isEditing {
-                                // Add new detail
-                                HStack {
-                                    TextField("Add new information...", text: $newDetailText)
-                                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                                        .focused($isTextFieldFocused)
-                                        .onSubmit {
-                                            addNewDetail()
-                                        }
+                                // Add new detail with two input fields
+                                VStack(spacing: 8) {
+                                    HStack(spacing: 8) {
+                                        TextField("Name", text: $newDetailName)
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                            .focused($isNameFieldFocused)
+                                            .onSubmit {
+                                                handleNameFieldSubmit()
+                                            }
+                                        
+                                        TextField("Content", text: $newDetailContent)
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                            .focused($isContentFieldFocused)
+                                            .onSubmit {
+                                                handleContentFieldSubmit()
+                                            }
+                                    }
                                     
-                                    Button(action: {
-                                        addNewDetail()
-                                    }) {
-                                        Image(systemName: "plus.circle.fill")
-                                            .font(.system(size: 24))
+                                    HStack {
+                                        Spacer()
+                                        
+                                        Button(action: {
+                                            addNewDetail()
+                                        }) {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "plus.circle.fill")
+                                                    .font(.system(size: 16))
+                                                Text("Add")
+                                                    .font(.system(size: 14, weight: .medium))
+                                            }
                                             .foregroundColor(.primary)
+                                        }
+                                        .disabled(newDetailName.isEmpty || newDetailContent.isEmpty)
                                     }
                                 }
                             }
@@ -162,7 +196,8 @@ struct InfoDetailView: View {
                             Button(action: {
                                 // Cancel editing
                                 editingDetails = item.details
-                                newDetailText = ""
+                                newDetailName = ""
+                                newDetailContent = ""
                                 isEditing = false
                             }) {
                                 Text("Cancel")
@@ -204,7 +239,7 @@ struct InfoDetailView: View {
                     Button(action: {
                         isEditing = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            isTextFieldFocused = true
+                            isNameFieldFocused = true
                         }
                     }) {
                         Image(systemName: "plus")

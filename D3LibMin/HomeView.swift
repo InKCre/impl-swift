@@ -8,21 +8,21 @@
 import SwiftUI
 
 struct HomeView: View {
+    @StateObject private var dataManager = DataManager()
     @State private var selectedFilter: InfoType? = nil
     @State private var showingAddOptions = false
-    @State private var infoItems: [InfoItem] = [
-        InfoItem(title: "605-1-3064", subtitle: "Package pick up", type: .numbers),
-        InfoItem(title: "Moonlight", subtitle: "Piano scores", type: .files),
-        InfoItem(title: "Lanzhi Jiang", subtitle: "New contact", type: .profiles),
-        InfoItem(title: "InkCre README.md", subtitle: "API definitions", type: .files),
-        InfoItem(title: "Meeting Notes", subtitle: "Weekly team sync", type: .phrases)
-    ]
+    
+    // 为了保持向后兼容，将InfoBlock转换为InfoItem用于显示
+    var infoItems: [InfoItem] {
+        return dataManager.infoBlocks.map { InfoItem(from: $0) }
+    }
     
     var filteredItems: [InfoItem] {
+        let items = infoItems
         if let selectedFilter = selectedFilter {
-            return infoItems.filter { $0.type == selectedFilter }
+            return items.filter { $0.type == selectedFilter }
         }
-        return infoItems
+        return items
     }
     
     var body: some View {
@@ -39,19 +39,22 @@ struct HomeView: View {
                                 .frame(width: 24, height: 24)
                             
                             Text("Library")
-                                .font(.system(size: 24, weight: .medium, design: .default))
+                                .font(.spaceGroteskMedium(size: 24))
                                 .foregroundColor(.primary)
                         }
                         
                         Spacer()
                         
                         Button(action: {
-                            // TODO: Add refresh functionality
+                            dataManager.refreshFromAPI()
                         }) {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 20))
                                 .foregroundColor(.primary)
+                                .rotationEffect(.degrees(dataManager.isLoading ? 360 : 0))
+                                .animation(dataManager.isLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: dataManager.isLoading)
                         }
+                        .disabled(dataManager.isLoading)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
@@ -165,6 +168,15 @@ struct HomeView: View {
                 }
             }
         }
+        .alert("Error", isPresented: .constant(dataManager.errorMessage != nil)) {
+            Button("OK") {
+                dataManager.errorMessage = nil
+            }
+        } message: {
+            if let errorMessage = dataManager.errorMessage {
+                Text(errorMessage)
+            }
+        }
     }
 }
 
@@ -229,12 +241,12 @@ struct InfoCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(item.title)
-                .font(.system(size: 20, weight: .medium))
+                .font(.spaceGroteskMedium(size: 20))
                 .foregroundColor(.primary)
                 .multilineTextAlignment(.leading)
             
             Text(item.subtitle)
-                .font(.system(size: 14, weight: .regular))
+                .font(.spaceGroteskMedium(size: 14))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.leading)
         }

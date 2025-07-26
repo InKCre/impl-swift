@@ -22,7 +22,7 @@ struct UserProfileView: View {
                         .frame(width: 24, height: 24)
                     
                     Text("Profile")
-                        .font(.system(size: 24, weight: .medium, design: .default))
+                        .font(.spaceGroteskMedium(size: 24))
                         .foregroundColor(.primary)
                 }
                 
@@ -47,7 +47,7 @@ struct UserProfileView: View {
                         // Name and Username
                         VStack(spacing: 4) {
                             Text(userProfile.name)
-                                .font(.system(size: 20, weight: .medium))
+                                .font(.spaceGroteskMedium(size: 20))
                                 .foregroundColor(.primary)
                             
                             Text(userProfile.username)
@@ -104,9 +104,7 @@ struct UserProfileView: View {
                         }
                         
                         // Add Device Button
-                        Button(action: {
-                            // Add device action
-                        }) {
+                        NavigationLink(destination: AddDeviceView()) {
                             HStack {
                                 Image(systemName: "plus")
                                     .font(.system(size: 14, weight: .medium))
@@ -140,9 +138,15 @@ struct UserProfileView: View {
                         .padding(.bottom, 16)
                         
                         VStack(spacing: 16) {
-                            SettingsRow(title: "Notifications", hasChevron: true)
-                            SettingsRow(title: "Privacy", hasChevron: true)
-                            SettingsRow(title: "Help & Support", hasChevron: true)
+                            NavigationLink(destination: NotificationsView()) {
+                                SettingsRow(title: "Notifications", hasChevron: true)
+                            }
+                            NavigationLink(destination: PrivacyView()) {
+                                SettingsRow(title: "Privacy", hasChevron: true)
+                            }
+                            NavigationLink(destination: HelpSupportView()) {
+                                SettingsRow(title: "Help & Support", hasChevron: true)
+                            }
                         }
                     }
                     .padding(20)
@@ -222,25 +226,20 @@ struct SettingsRow: View {
     let hasChevron: Bool
     
     var body: some View {
-        Button(action: {
-            // Settings action
-        }) {
-            HStack {
-                Text(title)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                if hasChevron {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
+        HStack {
+            Text(title)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.primary)
+            
+            Spacer()
+            
+            if hasChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
             }
-            .padding(.vertical, 8)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(.vertical, 8)
     }
 }
 

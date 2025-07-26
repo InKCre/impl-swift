@@ -26,11 +26,14 @@ struct ContentView: View {
                         Text("Library")
                     }
                 
-                UserProfileView()
-                    .tabItem {
-                        Image(systemName: "person")
-                        Text("Profile")
-                    }
+                NavigationView {
+                    UserProfileView()
+                }
+                .navigationViewStyle(StackNavigationViewStyle())
+                .tabItem {
+                    Image(systemName: "person")
+                    Text("Profile")
+                }
             }
             .accentColor(.primary)
             .animation(nil, value: UUID())

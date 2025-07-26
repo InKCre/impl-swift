@@ -9,6 +9,11 @@ import SwiftUI
 
 @main
 struct D3LibMinApp: App {
+    init() {
+        // Register custom fonts
+        FontManager.registerFonts()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
