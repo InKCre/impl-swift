@@ -10,7 +10,7 @@
 
 ## 构建与打开
 
-需要 Xcode 26.2 / Swift 6.2，无第三方 Swift 依赖。
+需要 Xcode 26.2 / Swift 6.2。PostgresNIO 及依赖通过 SwiftPM 解析，精确修订固定在 Package.resolved。
 
 ```sh
 swift test
@@ -22,7 +22,7 @@ open dist/InKCre.app
 
 需要反复开发和实测系统采集时，使用本人明确指定的 Apple Development 身份：`DEVELOPMENT_SIGNING_IDENTITY='Apple Development: …' bash scripts/build-app.sh`。也可将该身份的名称或证书 SHA-1 单独保存在 ignored `.local-development-signing-identity`（一行文本，不执行其中内容）。脚本不会自动选择证书或回退到另一个身份；正式发布仍使用独立的 `SIGNING_IDENTITY` 输入。ad-hoc 身份随代码版本变化，系统可能不再认可先前的隐私授权；固定路径和 bundle ID 本身不足以解决此问题。[Apple 对代码身份与授权的说明](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements)。
 
-默认 `⌃⌥I` 读取当前选区并唤起快捷面板，`⌃⌥S` 框选截图；采集编辑器内 `⇧⌘V` 粘贴材料、`⌘↩` 收入，Esc 仅收起快捷面板并保留草稿。设置中的五项快捷键均可分别录入、清除或恢复默认，修改立即生效并在重启后保留；旧版预设会自动迁移。点击对应按键按钮后按下组合键，Esc 取消录入。组合键须包含 ⌘、⌃ 或 ⌥，收起面板的默认 Esc 除外。重复组合或系统注册冲突会提示并保留原设置，其他快捷键不受影响。录入期间暂停全局触发，离开设置或切换应用时取消录入。
+默认 `⌃⌥I` 读取当前选区并唤起快捷面板，`⌃⌥S` 框选截图；采集编辑器内 `⇧⌘V` 粘贴材料、`⌘↩` 收入，Esc 仅收起快捷面板并保留草稿。设置中的五项快捷键均可分别录入、清除或恢复默认，修改立即生效并在重启后保留。点击对应按键按钮后按下组合键，Esc 取消录入。组合键须包含 ⌘、⌃ 或 ⌥，收起面板的默认 Esc 除外。重复组合或系统注册冲突会提示并保留原设置，其他快捷键不受影响。录入期间暂停全局触发，离开设置或切换应用时取消录入。
 
 收集和截图在全局生效；粘贴和收入作用于主窗口采集页或快捷面板；收起仅作用于快捷面板。输入法组词时采集快捷键交给输入法处理。菜单栏入口始终可用。选区需要辅助功能权限，截图需要屏幕录制权限；输入和明确粘贴不需要这些权限。
 
@@ -36,25 +36,27 @@ open dist/InKCre.app
 
 ## 连接信息库
 
-连接设置需要共享信息库的 PostgREST HTTP(S) 地址和部署签名凭据，可选填 Web Peer 地址。凭据仅存于 Keychain。该身份具有部署 Peer 的完整权限，应使用你有权访问的信息库。
+连接设置使用 PostgreSQL 主机、端口、库名、独立运行角色及密码，可选 Web 地址。远端使用 TLS 并校验证书；只有回环开发地址允许关闭 TLS。密码存于 Keychain，角色拥有已准入数据库协议权限，不使用迁移管理员或 JWT 签名密钥。
 
 “连接信息库”或“编辑连接”打开原生 sheet；无效输入在表单内提示并保留，可用 Esc 取消、Return 保存。编辑期间不能通过新建或全局采集切走表单。保存后网络检查在后台进行，不阻塞采集。最近检查须同时通过 Peer 注册与直接提交回执合同访问；配置已保存或单次注册成功都不等于采集能力可用。权限页分别显示辅助功能与屏幕录制的实际许可状态。
 
-部署只需要具备 `capture_receipts`、`graph_digest` 和 `commit_capture` 的共享 PostgreSQL／PostgREST 数据库协议。Mac 自己构图并原子写入，不发现或调用 Python 执行者；Python Peer 停止不影响收入。Web 或 Python Peer 若要解释这些内容，可各自按需启用 Capture 读取分发；它们不是写入的前置条件。共享合同见 [主动采集持久化契约](https://github.com/InKCre/docs/blob/main/20-product-tdd/capture-contract.md)。
+共享数据库需要本分支的 Capture 回执表与原生分发参与合同。Capture Swift 分发在本 Peer 内构图，用同一 PostgreSQL 事务写图、原图和回执；Python Peer 与 PostgREST 均无需在线。图、材料指纹和收入语义属于 first-party `inkcre/capture`，共享合同见 [Capture Extension 合同](https://github.com/InKCre/docs/blob/main/20-product-tdd/capture-contract.md)。
 
 “草稿已保留在本机”表示 SQLite 已成功落盘；“本机已保留，待收入”表示冻结材料和目标已经保存；“结果待确认”表示请求可能已经成功；只有共享回执通过材料指纹核对后才显示“已收入”。网络中断、退出或切换连接不会给旧提交换身份或改目标。后台恢复先查回执，必要时复用原材料、图与原 UUID 向同一信息库重试。共享根被删除后重试也不会重建。
 
-材料累计最多 32 MiB，编码后的请求最多 48 MiB；图片保留原始字节，支持 PNG/JPEG/GIF/WebP。实际代理必须允许同等请求体。失败材料可在“待收入”中导出 JSON，导出不含连接凭据。暂不提供修改已经发送的材料或自动舍弃失败项。
+材料累计最多 32 MiB，支持 PNG/JPEG/GIF/WebP，原生数据库通过 bytea 参数保存原图。失败材料可在“待收入”中导出 JSON，导出不含连接凭据。暂不提供修改已经发送的材料或自动舍弃失败项。
 
 待收入记录可“取消收入”，停止后续自动发送并保留原材料、UUID 和目标；“继续收入”先查原回执。已发出的请求可能已完成，取消不能撤回共享内容。确认删除待办会停止后续发送并删除本机记录和材料；已经发出的请求仍可能完成，迟到响应不会重新创建本机记录。
 
 ## 本地数据与发布
 
-开发包数据位于 `~/Library/Application Support/dev.inkcre.capture/capture.sqlite`，使用 WAL/FULL。冻结包包含图片，确认后原文和图片从该记录移除，保留共享引用；WAL 和 SQLite 空闲页不是安全擦除机制。备份或迁移时先退出应用，保留该目录和 Keychain 中的连接凭据。较新本地数据库格式会阻止旧版本打开，避免破坏数据。
+开发包的 Host 配置位于 `~/Library/Application Support/dev.inkcre.capture/connection.json`；Capture 数据位于同目录 `extensions/inkcre-capture/capture.sqlite`，使用 WAL/FULL。确认后清理本机材料，保留共享引用。WAL 和空闲页不提供安全擦除保证。此前未发布开发版的数据文件原样保留，本版没有旧格式导入或 HTTP 回退层。
 
-本机格式 3 使用确认后的直接删除，移除了格式 2 的回收站行为。打开旧数据不会自动清理材料：旧“已删除”项保留原内容和状态，显示在普通记录中，原先取消的待办不会自动发送。格式升级后旧版本应用不能继续打开，以免写回不同的删除语义。SQLite 的 WAL 和空闲页不提供安全擦除保证。
+`Packages/PeerCore` 提供数据库、标准图／存储、凭据和原生模块生命周期；`extensions/capture` 是独立 Swift 包，拥有采集业务与 Mac 界面。宿主菜单提供独立的“Peer 连接…”，Capture 停用后仍能编辑连接，宿主继续维护 Peer 在线状态。应用菜单“扩展…”展示实际携带的分发版本和本机运行状态，可独立启停。停用撤下入口并等待当前工作收束，保留材料；退出只停止运行，不撤回启用意图。未配置数据库可离线收集；离线开关不覆盖共享参与意图，重连先读取已有选择，不重建已移除记录。明确在线启用可以重新建立本 Peer 的参与。
 
-应用图标、菜单栏 template 图标和明暗面板标识来自用户提供的 2026-10-21 logo pack。应用 ICNS 在原标志外使用 Mac 专用圆角底板和透明边距，避免通用白底画布满版导致 Dock 尺寸过大。资源选择、原始出处、小尺寸/高 DPI 几何与再生步骤见 `Sources/InKCreApp/Resources/Brand/README.md`，构建不依赖 Downloads 中的原始目录。
+Capture 的精确 manifest 随签名应用交付，格式为 `swift_bundled`。当前不实现动态插件下载／热加载，其他版本需更新应用。扩展版本与应用版本分开，不声称已有 Registry 原生 Swift 下载通道。
+
+应用图标、菜单栏 template 图标和明暗面板标识来自用户提供的 2026-10-21 logo pack。应用 ICNS 在原标志外使用 Mac 专用圆角底板和透明边距，避免通用白底画布满版导致 Dock 尺寸过大。资源选择、原始出处、小尺寸/高 DPI 几何与再生步骤见 `extensions/capture/Sources/CaptureMac/Resources/Brand/README.md`，构建不依赖 Downloads 中的原始目录。
 
 发布构建显式设置稳定 `BUNDLE_ID` 与 `SIGNING_IDENTITY`；可用 `NOTARY_PROFILE` 指定已配置的 notarytool Keychain profile。脚本不会寻找或创建发布凭据。发布后保持 bundle ID 与签名团队不变，以保留系统权限、Keychain 和待办身份。
 
@@ -63,4 +65,7 @@ BUNDLE_ID=你的稳定BundleID SIGNING_IDENTITY='Developer ID Application: …' 
   NOTARY_PROFILE=你的Profile bash scripts/build-app.sh
 ```
 
-Swift 测试覆盖冻结包重开、目标绑定、原子确认、原生构图、直接数据库提交与已有冻结材料指纹兼容。原生权限、多应用选区、多屏、Intel 实机与公证安装还需对应环境验证，不能由 universal 编译结果推断通过。
+Swift 测试覆盖冻结包重开、目标绑定、原子确认、原生构图、原生数据库事务、共享材料指纹与扩展生命周期。原生权限、多应用选区、多屏、Intel 实机与公证安装还需对应环境验证，不能由 universal 编译结果推断通过。
+
+
+原创 Swift 代码使用 MIT，Cida 参考／改写文件保留 Apache-2.0。见 [开源许可与致谢](THIRD_PARTY_NOTICES.md)。构建脚本从本次解析的依赖收集完整许可，随开发包交付；菜单“开源许可与致谢…”可打开通知。

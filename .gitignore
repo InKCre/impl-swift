@@ -5,3 +5,5 @@ dist/
 *.xcuserstate
 xcuserdata/
 .local-development-signing-identity
+**/Package.resolved
+!/Package.resolved

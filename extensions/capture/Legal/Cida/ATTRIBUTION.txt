@@ -1,0 +1,9 @@
+Cida（辞达）
+上游：https://github.com/Xuanwo/cida
+作者：Xuanwo 及 Cida 贡献者
+核对版本：3099e0dcbc2bafe0a86e6a04d1941b78afacbfd6
+许可：Apache License 2.0，完整文本见同目录 LICENSE。
+
+InKCre 的 SelectedText.swift、RegionCapture.swift 参考与改写了 Cida 的选区读取、剪贴板保护和框选交互。
+InKCre 为持久收集目的修改了选区验证、复制边界、窗口路由和原图保存，不包含 Cida 翻译业务。
+Cida 名称仅用于来源致谢，不表示上游对 InKCre 的认可或合作。
