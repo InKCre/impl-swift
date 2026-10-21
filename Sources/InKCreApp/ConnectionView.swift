@@ -20,7 +20,7 @@ struct ConnectionView: View {
                         Text("最近检查未通过：\(issue)").foregroundStyle(.secondary)
                     } else if let date = model.lastContactAt {
                         LabeledContent("最近检查通过") { Text(date, format: .dateTime.month().day().hour().minute().second()) }
-                        Text("Capture 执行能力可用").font(.caption).foregroundStyle(.secondary)
+                        Text("信息库写入连接可用").font(.caption).foregroundStyle(.secondary)
                     } else { Text("等待首次联络；已配置连接不代表在线。").foregroundStyle(.secondary) }
                 }
                 LabeledContent("本机待收入", value: "\(model.pendingCount) 项")

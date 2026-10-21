@@ -144,7 +144,7 @@ struct CaptureStoreTests {
         let url = directory.appendingPathComponent("capture.sqlite")
         let store = try CaptureStore(url: url)
         let target = ConnectionTarget(postgrestURL: URL(string: "https://one.example/db")!)
-        let image = Data([0, 1, 2, 255])
+        let image = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAUAAAAHCAIAAABPxRC5AAAAE0lEQVR4nGPkUbJgQAJMyBwa8AEvKAB0sOhdcgAAAABJRU5ErkJggg=="))
         let draft = CaptureRecord(payload: CapturePayload(
             entry: .paste,
             materials: [Material(text: "原文\n中文 👩🏽‍💻 e\u{301}"), Material(image: image, mimeType: "image/png")],

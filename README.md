@@ -38,11 +38,11 @@ open dist/InKCre.app
 
 连接设置需要共享信息库的 PostgREST HTTP(S) 地址和部署签名凭据，可选填 Web Peer 地址。凭据仅存于 Keychain。该身份具有部署 Peer 的完整权限，应使用你有权访问的信息库。
 
-“连接信息库”或“编辑连接”打开原生 sheet；无效输入在表单内提示并保留，可用 Esc 取消、Return 保存。编辑期间不能通过新建或全局采集切走表单。保存后网络检查在后台进行，不阻塞采集。最近检查须同时通过 Peer 注册、回执合同访问与 Capture 执行者发现；配置已保存或单次注册成功都不等于采集能力可用。权限页分别显示辅助功能与屏幕录制的实际许可状态。
+“连接信息库”或“编辑连接”打开原生 sheet；无效输入在表单内提示并保留，可用 Esc 取消、Return 保存。编辑期间不能通过新建或全局采集切走表单。保存后网络检查在后台进行，不阻塞采集。最近检查须同时通过 Peer 注册与直接提交回执合同访问；配置已保存或单次注册成功都不等于采集能力可用。权限页分别显示辅助功能与屏幕录制的实际许可状态。
 
-部署需要包含 `capture_receipts` 的数据库合同，以及在线、已启用 `inkcre/capture` Python 分发的 Peer（Host SDK ≥0.3.4、<0.4.0）。Mac 从共享 `peers` 公告发现 `extensions.capture.submit.v1`，不要求固定 Python 地址。Web 读取者另需启用同产品的 Module Federation 分发（Host SDK ≥0.4.0、<0.5.0）。发布与安装由各分发既有的 Registry 流程承担。
+部署只需要具备 `capture_receipts`、`graph_digest` 和 `commit_capture` 的共享 PostgreSQL／PostgREST 数据库协议。Mac 自己构图并原子写入，不发现或调用 Python 执行者；Python Peer 停止不影响收入。Web 或 Python Peer 若要解释这些内容，可各自按需启用 Capture 读取分发；它们不是写入的前置条件。共享合同见 [主动采集持久化契约](https://github.com/InKCre/docs/blob/main/20-product-tdd/capture-contract.md)。
 
-“草稿已保留在本机”表示 SQLite 已成功落盘；“本机已保留，待收入”表示冻结材料和目标已经保存；“结果待确认”表示请求可能已经成功；只有共享回执通过材料指纹核对后才显示“已收入”。网络中断、退出或切换连接不会给旧提交换身份或改目标。后台恢复先查回执，必要时复用原材料与原 UUID，并轮换在线执行者。共享根被删除后重试也不会重建。
+“草稿已保留在本机”表示 SQLite 已成功落盘；“本机已保留，待收入”表示冻结材料和目标已经保存；“结果待确认”表示请求可能已经成功；只有共享回执通过材料指纹核对后才显示“已收入”。网络中断、退出或切换连接不会给旧提交换身份或改目标。后台恢复先查回执，必要时复用原材料、图与原 UUID 向同一信息库重试。共享根被删除后重试也不会重建。
 
 材料累计最多 32 MiB，编码后的请求最多 48 MiB；图片保留原始字节，支持 PNG/JPEG/GIF/WebP。实际代理必须允许同等请求体。失败材料可在“待收入”中导出 JSON，导出不含连接凭据。暂不提供修改已经发送的材料或自动舍弃失败项。
 
@@ -63,4 +63,4 @@ BUNDLE_ID=你的稳定BundleID SIGNING_IDENTITY='Developer ID Application: …' 
   NOTARY_PROFILE=你的Profile bash scripts/build-app.sh
 ```
 
-Swift 测试覆盖冻结包重开、目标绑定、原子确认与 Python/Swift 指纹样例。原生权限、多应用选区、多屏、Intel 实机与公证安装还需对应环境验证，不能由 universal 编译结果推断通过。
+Swift 测试覆盖冻结包重开、目标绑定、原子确认、原生构图、直接数据库提交与已有冻结材料指纹兼容。原生权限、多应用选区、多屏、Intel 实机与公证安装还需对应环境验证，不能由 universal 编译结果推断通过。

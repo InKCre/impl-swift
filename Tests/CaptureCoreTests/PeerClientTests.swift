@@ -51,30 +51,22 @@ struct PeerClientTests {
         }
     }
 
-    @Test func anotherExecutorCanAcceptTheSameFrozenIntentAfterUnknownOutcome() async throws {
+    @Test func writesDirectlyToDatabaseAndRetriesIdenticalGraphAfterUnknownOutcome() async throws {
         var record = CaptureRecord(payload: CapturePayload(materials: [Material(text: "保持同一份材料")]))
         record.target = ConnectionTarget(postgrestURL: URL(string: "https://fixture.test")!)
         let identity = record.id.uuidString
         let received = Mutex<[String]>([])
         let receiptPublished = Mutex(false)
-        let payload = try #require(record.payload)
-        let digest = try payload.canonicalDigest()
+        let digest = try #require(record.payload).canonicalDigest()
         StubTransport.handler.withLock { handler in
             handler = { request in
+                #expect(request.url?.host == "fixture.test")
+                #expect(request.value(forHTTPHeaderField: "Accept-Profile") == "inkcre")
                 switch request.url?.path {
-                case "/rpc/renew_peer_lease": return Data("\"2026-10-21T01:04:03Z\"".utf8)
-                case "/peers" where request.httpMethod == "GET":
-                    return Data("""
-                        [{"id":"00000000-0000-4000-8000-000000000001","capabilities":[
-                          {"id":"unrelated","inbound":{"protocol":"other.v1","parameters":{"method":42}}},
-                          {"id":"extensions.capture.submit.v1","inbound":{"protocol":"core.peer.protocol.http.v1","parameters":{"method":"POST","url":"https://first.test/capture"}}}]},
-                         {"id":"00000000-0000-4000-8000-000000000002","capabilities":[
-                          {"id":"extensions.capture.submit.v1","inbound":{"protocol":"core.peer.protocol.http.v1","parameters":{"method":"POST","url":"https://second.test/capture"}}}]}]
-                        """.utf8)
-                case "/capture":
-                    let host = request.url!.host!
-                    received.withLock { $0.append(host) }
-                    if host == "first.test" { throw URLError(.networkConnectionLost) }
+                case "/rpc/commit_capture":
+                    #expect(request.httpMethod == "POST")
+                    let attempt = received.withLock { $0.append(request.url!.path); return $0.count }
+                    if attempt == 1 { throw URLError(.networkConnectionLost) }
                     return Data("""
                         {"submission_id":"\(identity)","root_block_id":42,"committed_at":"2026-10-21T01:02:03Z","availability":"available"}
                         """.utf8)
@@ -85,17 +77,17 @@ struct PeerClientTests {
                           "committed_at":"2026-10-21T01:02:03Z"}]
                         """.utf8)
                 case "/blocks": return Data("[{\"id\":42}]".utf8)
-                default: return Data()
+                default:
+                    Issue.record("写入不能发现或调用其他 Peer：\(request.url?.path ?? "")")
+                    throw URLError(.unsupportedURL)
                 }
             }
         }
         defer { StubTransport.handler.withLock { $0 = nil } }
         let peer = client()
-        record.attempts = 1
         await #expect(throws: CaptureError.self) {
             _ = try await peer.submit(record, secret: String(repeating: "s", count: 32))
         }
-        record.attempts = 2
         // An HTTP success without its durable shared receipt must not release local material.
         await #expect(throws: CaptureError.self) {
             _ = try await peer.submit(record, secret: String(repeating: "s", count: 32))
@@ -103,6 +95,6 @@ struct PeerClientTests {
         receiptPublished.withLock { $0 = true }
         let result = try await peer.submit(record, secret: String(repeating: "s", count: 32))
         #expect(result.submissionID == record.id)
-        #expect(received.withLock { $0 } == ["first.test", "second.test", "second.test"])
+        #expect(received.withLock { $0.count == 3 })
     }
 }

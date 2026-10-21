@@ -1,7 +1,6 @@
 import Foundation
 
 public struct PeerClient: Sendable {
-    public static let capability = "extensions.capture.submit.v1"
     private let session: URLSession
 
     public init(session: URLSession? = nil) {
@@ -47,13 +46,12 @@ public struct PeerClient: Sendable {
     }
 
     public func checkConnection(_ target: ConnectionTarget, secret: String) async throws {
-        let clock = try await register(target, secret: secret)
+        _ = try await register(target, secret: secret)
         _ = try await database(
             target, path: "capture_receipts",
-            query: [.init(name: "select", value: "submission_id"), .init(name: "limit", value: "0")],
+            query: [.init(name: "select", value: "submission_id,graph_digest"), .init(name: "limit", value: "0")],
             secret: secret
         )
-        _ = try await providers(target, secret: secret, databaseTime: clock)
     }
 
     public func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? {
@@ -96,15 +94,13 @@ public struct PeerClient: Sendable {
         guard let target = record.target, let payload = record.payload else {
             throw CaptureError.invalid("待办缺少冻结的材料或目标。")
         }
-        let clock = try await register(target, secret: secret)
-        let candidates = try await providers(target, secret: secret, databaseTime: clock)
-        let endpoint = candidates[max(0, record.attempts - 1) % candidates.count]
-        let body = try CaptureJSON.encode(payload)
+        let body = try CaptureJSON.encode(CaptureCommit(payload))
         guard body.count <= 48 * 1024 * 1024 else {
             throw CaptureError.needsAction("编码后的请求超过 48 MiB，请保留材料并处理。")
         }
-        let data = try await request(
-            endpoint, method: "POST", body: body, secret: secret, isCaptureDispatch: true
+        let data = try await database(
+            target, path: "rpc/commit_capture", method: "POST", body: body,
+            secret: secret, isCaptureDispatch: true
         )
         guard let reported = try? CaptureJSON.decode(CaptureResult.self, from: data),
               reported.submissionID == record.id else { throw CaptureError.outcomeUnknown }
@@ -114,59 +110,10 @@ public struct PeerClient: Sendable {
         return persisted
     }
 
-    private func providers(
-        _ target: ConnectionTarget, secret: String, databaseTime: Date
-    ) async throws -> [URL] {
-        let formatter = ISO8601DateFormatter()
-        let data = try await database(
-            target, path: "peers",
-            query: [.init(name: "select", value: "id,capabilities"),
-                    .init(name: "lease_expires_at", value: "gt.\(formatter.string(from: databaseTime))"),
-                    .init(name: "order", value: "id")], secret: secret
-        )
-        struct Peer: Decodable {
-            struct Capability: Decodable {
-                struct Inbound: Decodable {
-                    struct Parameters: Decodable { let method: String?; let url: String? }
-                    let `protocol`: String
-                    let parameters: Parameters
-                    enum CodingKeys: CodingKey { case `protocol`, parameters }
-                    init(from decoder: Decoder) throws {
-                        let values = try decoder.container(keyedBy: CodingKeys.self)
-                        `protocol` = try values.decode(String.self, forKey: .protocol)
-                        parameters = `protocol` == "core.peer.protocol.http.v1"
-                            ? try values.decode(Parameters.self, forKey: .parameters)
-                            : Parameters(method: nil, url: nil)
-                    }
-                }
-                let id: String
-                let inbound: Inbound
-            }
-            let id: UUID
-            let capabilities: [Capability]
-        }
-        let peers = try CaptureJSON.decode([Peer].self, from: data)
-        var endpoints: [URL] = []
-        for peer in peers {
-            for capability in peer.capabilities where capability.id == Self.capability {
-                let inbound = capability.inbound
-                guard inbound.protocol == "core.peer.protocol.http.v1",
-                      inbound.parameters.method?.uppercased() == "POST",
-                      let address = inbound.parameters.url, let url = URL(string: address),
-                      ["http", "https"].contains(url.scheme), url.host != nil,
-                      url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { continue }
-                if !endpoints.contains(url) { endpoints.append(url) }
-            }
-        }
-        guard !endpoints.isEmpty else {
-            throw CaptureError.connection("暂时没有在线的 Capture 执行 Peer。请安装并启用配套分发；材料仍保留在本机。")
-        }
-        return endpoints
-    }
-
     private func database(
         _ target: ConnectionTarget, path: String, method: String = "GET",
-        query: [URLQueryItem] = [], body: Data? = nil, secret: String, prefer: String? = nil
+        query: [URLQueryItem] = [], body: Data? = nil, secret: String, prefer: String? = nil,
+        isCaptureDispatch: Bool = false
     ) async throws -> Data {
         var url = target.postgrestURL
         for component in path.split(separator: "/") { url.appendPathComponent(String(component)) }
@@ -177,7 +124,7 @@ public struct PeerClient: Sendable {
         guard let endpoint = components.url else { throw CaptureError.invalid("连接地址无效。") }
         return try await request(
             endpoint, method: method, body: body, secret: secret,
-            profile: "inkcre", prefer: prefer, isCaptureDispatch: false
+            profile: "inkcre", prefer: prefer, isCaptureDispatch: isCaptureDispatch
         )
     }
 
@@ -211,7 +158,7 @@ public struct PeerClient: Sendable {
             if isCaptureDispatch, http.statusCode >= 500 || http.statusCode == 429 { throw CaptureError.outcomeUnknown }
             switch http.statusCode {
             case 401, 403: throw CaptureError.needsAction("凭据被拒绝，请更新连接凭据并检查系统时间。")
-            case 404: throw CaptureError.needsAction("目标缺少 Capture v1 协议，请更新数据库与配套分发。")
+            case 404: throw CaptureError.needsAction("目标缺少 Capture 写入协议，请更新共享数据库。")
             case 409: throw CaptureError.needsAction("提交身份与已保存内容冲突，请保留原待办。")
             case 413: throw CaptureError.needsAction("请求超过服务端或代理限额，材料仍保留。")
             case 422: throw CaptureError.needsAction("服务端拒绝了材料格式，请保留待办并检查内容。")

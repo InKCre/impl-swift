@@ -1,4 +1,6 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 public enum CaptureError: LocalizedError, Sendable {
     case invalid(String)
@@ -104,6 +106,11 @@ public struct CapturePayload: Codable, Sendable {
             throw CaptureError.invalid("先写下想法，或加入一份材料。")
         }
         guard materials.count <= 128 else { throw CaptureError.invalid("材料数量超过 128 项。") }
+        for (value, limit) in [(origin?.applicationID, 1024), (origin?.title, 4096), (origin?.url, 8192)] {
+            guard (value?.unicodeScalars.count ?? 0) <= limit else {
+                throw CaptureError.invalid("来源信息过长，请缩短后收入。")
+            }
+        }
         let size = materials.reduce(annotation?.utf8.count ?? 0) { $0 + $1.byteCount }
         guard size <= 32 * 1024 * 1024 else {
             throw CaptureError.invalid("材料累计超过 32 MiB，请拆分后收入。")
@@ -119,6 +126,18 @@ public struct CapturePayload: Codable, Sendable {
                       ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(material.mimeType),
                       material.text == nil else {
                     throw CaptureError.invalid("图片为空或格式不支持。")
+                }
+                guard (material.filename?.unicodeScalars.count ?? 0) <= 512,
+                      let source = CGImageSourceCreateWithData(bytes as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+                      CGImageSourceGetStatus(source) == .statusComplete,
+                      let identifier = CGImageSourceGetType(source) as String?,
+                      UTType(identifier)?.preferredMIMEType == material.mimeType,
+                      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                      let width = properties[kCGImagePropertyPixelWidth] as? Int,
+                      let height = properties[kCGImagePropertyPixelHeight] as? Int,
+                      width > 0, height > 0, width <= 89_478_485 / height,
+                      CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary) != nil else {
+                    throw CaptureError.invalid("图片内容与格式不符、文件损坏或解码尺寸过大。")
                 }
             }
         }
