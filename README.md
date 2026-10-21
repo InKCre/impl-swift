@@ -1,71 +1,66 @@
-# D3LibMin - Library Notes App
+# InKCre for Mac
 
-一款基于SwiftUI开发的极简笔记收集应用，采用Dieter Rams风格设计，灵感来自Nothing和Teenage Engineering品牌的设计理念。
+正常运行于 Dock 和应用切换器中的原生 Mac Peer，首版提供收集能力。macOS 15 或更新版本，可采集当前选区、明确粘贴的文字/链接/图片、单屏框选截图与主动输入的想法。原材料、来源与补充想法分别保存；收入不依赖 OCR 或模型处理。
 
-## 功能特性
+启动或点击 Dock 图标打开普通主窗口，侧栏提供采集、记录、Peer 与连接。主窗口可缩放、最小化，记住尺寸位置；关闭主窗口后进程、菜单栏入口和队列继续运行，`⌘Q` 才退出。Peer 页展示当前信息库、连接对应的 Peer 身份、最近联络结果和待收入数；配置连接本身不表示在线。
 
-### 主要页面
-- **Library页面**: 垂直卡片列表，显示重要信息的标题和简短描述
-- **Profile页面**: 用户头像、内存使用情况、连接设备状态
+主窗口使用系统 `NavigationSplitView` 和原生工具栏，标题随当前页面更新。采集页工具栏提供新想法、粘贴材料、框选截图，各页保留快捷面板入口；记录和 Peer 页不显示采集动作。侧栏开关固定在窗口控制按钮旁，系统分隔线跟随侧栏宽度，内容区不另放重复顶栏。窗口通过 `NSHostingController` 与 `fullSizeContentView` 承载 SwiftUI，不用弹性占位或自制侧栏控制器修补位置。显示菜单提供系统侧栏切换和全屏命令。
 
-### 核心功能
-- **信息分类**: 支持四种类型的信息筛选
-  - Numbers (数字)
-  - Profiles (联系人)
-  - Files (文件)
-  - Phrases (短语)
+全局入口打开独立快捷采集面板。主窗口与面板共用同一草稿、记录和队列，同时只有一份可编辑采集视图。“在主窗口继续”转回主窗口采集页；关闭或收起快捷面板保留草稿并归还前一个应用的焦点。主窗口菜单提供新想法、设置、关闭、最小化和窗口重新打开等普通 Mac 操作。
 
-- **详情管理**: 点击卡片进入详情页面
-  - 查看Essential Information
-  - 编辑和重新排列内容
-  - 删除不需要的信息
+## 构建与打开
 
-- **快速添加**: 主页底部的"+"按钮
-  - 点击后弹出三个选项：文本、图片、文件
-  - 带有优雅的动画效果和背景遮罩
+需要 Xcode 26.2 / Swift 6.2，无第三方 Swift 依赖。
 
-### 设备连接
-- **AR设备支持**: 连接Rokid AR Pro眼镜
-- **实时状态显示**: 显示设备连接状态和最后连接时间
-
-### 设计特色
-- **Bento风格**: 简洁的卡片式布局
-- **Dieter Rams美学**: 极简主义设计原则
-- **现代化界面**: 清晰的视觉层次和优雅的交互
-- **流畅动画**: 自然的过渡效果和微交互
-
-## 技术栈
-- SwiftUI
-- iOS 18.5+
-- Xcode 16
-
-## 项目结构
-```
-D3LibMin/
-├── Models.swift          # 数据模型
-├── ContentView.swift     # 主视图容器
-├── HomeView.swift        # 主页视图
-├── UserProfileView.swift # 用户资料页面
-├── InfoDetailView.swift  # 信息详情页面
-└── D3LibMinApp.swift    # 应用入口
+```sh
+swift test
+bash scripts/build-app.sh
+open dist/InKCre.app
 ```
 
-## 运行项目
-1. 使用Xcode打开 `D3LibMin.xcodeproj`
-2. 选择iOS模拟器或真机
-3. 点击运行按钮或使用 `Cmd+R`
+构建产物是 universal `.app` 和 `dist/InKCre-0.1.0-universal.dmg`。未指定开发签名身份时使用 ad-hoc 签名；两种开发包都不能当作已公证的发行版。将 `.app` 放在固定位置，并保持稳定的开发签名身份后再授权。
 
-## 示例数据
-应用包含以下示例数据：
-- "605-1-3064" - Package pick up
-- "Moonlight" - Piano scores  
-- "John Smith" - Business contact
-- "Project Alpha" - Design files
-- "Meeting Notes" - Weekly team sync
+需要反复开发和实测系统采集时，使用本人明确指定的 Apple Development 身份：`DEVELOPMENT_SIGNING_IDENTITY='Apple Development: …' bash scripts/build-app.sh`。也可将该身份的名称或证书 SHA-1 单独保存在 ignored `.local-development-signing-identity`（一行文本，不执行其中内容）。脚本不会自动选择证书或回退到另一个身份；正式发布仍使用独立的 `SIGNING_IDENTITY` 输入。ad-hoc 身份随代码版本变化，系统可能不再认可先前的隐私授权；固定路径和 bundle ID 本身不足以解决此问题。[Apple 对代码身份与授权的说明](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements)。
 
-## 设计参考
-项目设计参考了paraflow文件夹中的原型设计，实现了：
-- 简洁的筛选按钮
-- 卡片式信息展示
-- 用户资料页面布局
-- 信息详情管理界面
+默认 `⌃⌥I` 读取当前选区并唤起快捷面板，`⌃⌥S` 框选截图；采集编辑器内 `⇧⌘V` 粘贴材料、`⌘↩` 收入，Esc 仅收起快捷面板并保留草稿。设置中的五项快捷键均可分别录入、清除或恢复默认，修改立即生效并在重启后保留；旧版预设会自动迁移。点击对应按键按钮后按下组合键，Esc 取消录入。组合键须包含 ⌘、⌃ 或 ⌥，收起面板的默认 Esc 除外。重复组合或系统注册冲突会提示并保留原设置，其他快捷键不受影响。录入期间暂停全局触发，离开设置或切换应用时取消录入。
+
+收集和截图在全局生效；粘贴和收入作用于主窗口采集页或快捷面板；收起仅作用于快捷面板。输入法组词时采集快捷键交给输入法处理。菜单栏入口始终可用。选区需要辅助功能权限，截图需要屏幕录制权限；输入和明确粘贴不需要这些权限。
+
+直接 AX 读取不可用时，仅在系统明确报告非空选区且不是安全输入时尝试复制回退。没有可靠选区时显示降级提示，不采集旧剪贴板或编辑器默认复制的整行。真实来源缺失就留空；明确粘贴不会伪造来源应用。通用文件、网页抓取、OCR 和知识查询不属于此版本。
+
+截图时拖动框选，黑白双边框与四角标记显示所选区域；松手后可以“截取”、重新框选或取消。回车确认，Esc、右键和“取消”按钮退出截图，保留原来的采集草稿。截图只保存最终确认的单屏区域。
+
+截图入口只静默检查授权；未授权时在面板内显示说明，不反复调用系统授权请求或弹出应用警告。只有明确点击“请求屏幕录制权限”才发起授权。授权后按系统要求完全退出并重新打开应用，不能仅凭系统开关亮起就断言当前进程已获得权限。[Apple 的 ScreenCaptureKit 示例说明](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos)。
+
+移除材料、删除草稿和删除记录均先显示系统确认框；取消确认不会改变内容，确认后直接删除，无法撤销。快捷面板的“取消本次”在有内容时先确认，确认后删除本次草稿并关闭面板；空面板直接关闭。“收起”只隐藏面板并保留草稿。删除已收入记录只影响本机列表，共享内容仍属于 info-base。不提供回收站或“撤销移除”。
+
+## 连接信息库
+
+连接设置需要共享信息库的 PostgREST HTTP(S) 地址和部署签名凭据，可选填 Web Peer 地址。凭据仅存于 Keychain。该身份具有部署 Peer 的完整权限，应使用你有权访问的信息库。
+
+“连接信息库”或“编辑连接”打开原生 sheet；无效输入在表单内提示并保留，可用 Esc 取消、Return 保存。编辑期间不能通过新建或全局采集切走表单。保存后网络检查在后台进行，不阻塞采集。最近检查须同时通过 Peer 注册、回执合同访问与 Capture 执行者发现；配置已保存或单次注册成功都不等于采集能力可用。权限页分别显示辅助功能与屏幕录制的实际许可状态。
+
+部署需要包含 `capture_receipts` 的数据库合同，以及在线、已启用 `inkcre/capture` Python 分发的 Peer（Host SDK ≥0.3.4、<0.4.0）。Mac 从共享 `peers` 公告发现 `extensions.capture.submit.v1`，不要求固定 Python 地址。Web 读取者另需启用同产品的 Module Federation 分发（Host SDK ≥0.4.0、<0.5.0）。发布与安装由各分发既有的 Registry 流程承担。
+
+“草稿已保留在本机”表示 SQLite 已成功落盘；“本机已保留，待收入”表示冻结材料和目标已经保存；“结果待确认”表示请求可能已经成功；只有共享回执通过材料指纹核对后才显示“已收入”。网络中断、退出或切换连接不会给旧提交换身份或改目标。后台恢复先查回执，必要时复用原材料与原 UUID，并轮换在线执行者。共享根被删除后重试也不会重建。
+
+材料累计最多 32 MiB，编码后的请求最多 48 MiB；图片保留原始字节，支持 PNG/JPEG/GIF/WebP。实际代理必须允许同等请求体。失败材料可在“待收入”中导出 JSON，导出不含连接凭据。暂不提供修改已经发送的材料或自动舍弃失败项。
+
+待收入记录可“取消收入”，停止后续自动发送并保留原材料、UUID 和目标；“继续收入”先查原回执。已发出的请求可能已完成，取消不能撤回共享内容。确认删除待办会停止后续发送并删除本机记录和材料；已经发出的请求仍可能完成，迟到响应不会重新创建本机记录。
+
+## 本地数据与发布
+
+开发包数据位于 `~/Library/Application Support/dev.inkcre.capture/capture.sqlite`，使用 WAL/FULL。冻结包包含图片，确认后原文和图片从该记录移除，保留共享引用；WAL 和 SQLite 空闲页不是安全擦除机制。备份或迁移时先退出应用，保留该目录和 Keychain 中的连接凭据。较新本地数据库格式会阻止旧版本打开，避免破坏数据。
+
+本机格式 3 使用确认后的直接删除，移除了格式 2 的回收站行为。打开旧数据不会自动清理材料：旧“已删除”项保留原内容和状态，显示在普通记录中，原先取消的待办不会自动发送。格式升级后旧版本应用不能继续打开，以免写回不同的删除语义。SQLite 的 WAL 和空闲页不提供安全擦除保证。
+
+应用图标、菜单栏 template 图标和明暗面板标识来自用户提供的 2026-10-21 logo pack。应用 ICNS 在原标志外使用 Mac 专用圆角底板和透明边距，避免通用白底画布满版导致 Dock 尺寸过大。资源选择、原始出处、小尺寸/高 DPI 几何与再生步骤见 `Sources/InKCreApp/Resources/Brand/README.md`，构建不依赖 Downloads 中的原始目录。
+
+发布构建显式设置稳定 `BUNDLE_ID` 与 `SIGNING_IDENTITY`；可用 `NOTARY_PROFILE` 指定已配置的 notarytool Keychain profile。脚本不会寻找或创建发布凭据。发布后保持 bundle ID 与签名团队不变，以保留系统权限、Keychain 和待办身份。
+
+```sh
+BUNDLE_ID=你的稳定BundleID SIGNING_IDENTITY='Developer ID Application: …' \
+  NOTARY_PROFILE=你的Profile bash scripts/build-app.sh
+```
+
+Swift 测试覆盖冻结包重开、目标绑定、原子确认与 Python/Swift 指纹样例。原生权限、多应用选区、多屏、Intel 实机与公证安装还需对应环境验证，不能由 universal 编译结果推断通过。
