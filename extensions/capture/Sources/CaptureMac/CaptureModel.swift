@@ -3,10 +3,11 @@ import Capture
 import Combine
 import Foundation
 import PeerCore
+import SwiftUI
 
 @MainActor
 final class CaptureModel: ObservableObject {
-    enum Pane: Hashable { case capture, queue, settings }
+    enum Pane: Hashable { case capture, queue, peer }
     enum EditorOwner { case main, quick }
     enum RemovalRequest {
         case material(draftID: UUID, materialID: UUID)
@@ -41,12 +42,11 @@ final class CaptureModel: ObservableObject {
         }
     }
     @Published var pane = Pane.capture
+    @Published var columnVisibility = NavigationSplitViewVisibility.all
     @Published var editorOwner = EditorOwner.main
     @Published var draft = CaptureRecord()
     @Published var records: [CaptureRecord] = []
     @Published var connection: ConnectionTarget?
-    @Published var editingConnection: ConnectionTarget?
-    @Published var showingConnectionEditor = false
     @Published var error: String?
     @Published var saveStatus = "随时写下想法，或加入材料"
     @Published var submitting = false
@@ -63,6 +63,7 @@ final class CaptureModel: ObservableObject {
     var dismissQuickCapture: (() -> Void)?
     var showMain: (() -> Void)?
     var showQuick: (() -> Void)?
+    var editConnection: ((ConnectionTarget?) -> Void)?
     let store: CaptureStore
     let credentials: CredentialStore
     let connections: ConnectionSettings
@@ -83,6 +84,16 @@ final class CaptureModel: ObservableObject {
         store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
         credentials = CredentialStore(service: "\(identity).connections")
         queue = CaptureQueue(store: store, credentials: credentials)
+    }
+
+    func canPerform(_ action: ShortcutAction, isEditor: Bool, isQuickPanel: Bool) -> Bool {
+        guard !submitting, error == nil, removalRequest == nil else { return false }
+        switch action {
+        case .capture, .screenshot: return true
+        case .paste: return isEditor
+        case .submit: return isEditor && hasContent
+        case .hide: return isQuickPanel
+        }
     }
 
     var pendingCount: Int {
@@ -296,8 +307,7 @@ final class CaptureModel: ObservableObject {
     func submit() {
         guard !submitting, hasContent else { return }
         guard let connection else {
-            openSettings()
-            showingConnectionEditor = true
+            openConnectionSettings()
             return
         }
         // An input method owns Return until its marked text is committed.
@@ -426,11 +436,8 @@ final class CaptureModel: ObservableObject {
         }
     }
 
-    func openSettings(target: ConnectionTarget? = nil) {
-        editingConnection = target ?? connection
-        pane = .settings
-        showMain?()
-        if target != nil { showingConnectionEditor = true }
+    func openConnectionSettings(target: ConnectionTarget? = nil) {
+        editConnection?(target ?? connection)
     }
 
     func continueInMain() {
@@ -461,7 +468,6 @@ final class CaptureModel: ObservableObject {
 
     func connectionSaved(_ target: ConnectionTarget) {
         connection = target
-        editingConnection = target
         connectionRevision = UUID()
         lastContactAt = nil
         peerConnectionIssue = nil
@@ -493,15 +499,20 @@ final class CaptureModel: ObservableObject {
         }
     }
 
-    func openResult(_ record: CaptureRecord) {
-        guard let result = record.result, result.availability == .available,
-            var url = record.target?.webURL
-        else {
-            error = "未配置 Web 地址；提交引用仍保留在此。"
-            return
-        }
+    func resultURL(for record: CaptureRecord) -> URL? {
+        guard let result = record.result, result.availability == .available, let target = record.target else { return nil }
+        let base = connection?.peerID == target.peerID ? connection?.webURL : target.webURL
+        guard var url = base else { return nil }
         for part in ["info-base", "list", "blocks", String(result.rootBlockID), "content"] {
             url.appendPathComponent(part)
+        }
+        return url
+    }
+
+    func openResult(_ record: CaptureRecord) {
+        guard let url = resultURL(for: record) else {
+            error = "未配置可用的 Web 地址，或共享内容已删除。"
+            return
         }
         NSWorkspace.shared.open(url)
     }

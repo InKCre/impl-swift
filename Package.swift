@@ -13,6 +13,7 @@ let package = Package(
                 .product(name: "PeerMacUI", package: "PeerCore"),
                 .product(name: "CaptureMac", package: "capture"),
             ]),
+        .testTarget(name: "HostTests", dependencies: ["InKCreApp"], path: "Tests/HostTests"),
         .testTarget(
             name: "CaptureTests",
             dependencies: [

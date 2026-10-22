@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Capture
+import Combine
 import PeerCore
 import SwiftUI
 
@@ -20,8 +21,32 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         self.context = context
         super.init()
     }
+    public var showPreferences: (() -> Void)?
+    public var editConnection: ((ConnectionTarget?) -> Void)?
+
+    public func makeSettingsViewController() -> NSViewController? {
+        model.map { NSHostingController(rootView: CaptureSettingsView(model: $0)) }
+    }
+
+    public func connectionDidChange(_ target: ConnectionTarget) { model?.connectionSaved(target) }
+
+    public var canOpenSettings: Bool {
+        model == nil || (canChangeCaptureContext && model?.submitting != true)
+    }
+
+    public func finishEditingSettings() { model?.shortcuts.cancelRecording() }
+
+    public func prepareForSettings() {
+        model?.shortcuts.cancelRecording()
+        panel?.makeFirstResponder(nil)
+        panel?.orderOut(nil)
+        model?.editorOwner = .main
+        model?.saveSoon()
+    }
+
     private var commandItem: NSMenuItem?
     private var statusItem: NSStatusItem?
+    private var shortcutObservation: AnyCancellable?
     private var panel: CapturePanel?
     private var mainWindow: PeerMainWindow?
     private var model: CaptureModel?
@@ -36,7 +61,13 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
     }
 
     public func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
-        canChangeCaptureContext && model?.submitting != true
+        guard canChangeCaptureContext, let model, !model.submitting,
+              model.shortcuts.recording == nil else { return false }
+        if item.action == #selector(performShortcut(_:)), let item = item as? NSMenuItem,
+           let action = ShortcutAction(rawValue: UInt32(item.tag)) {
+            return canPerform(action, in: NSApp.keyWindow)
+        }
+        return model.error == nil && model.removalRequest == nil
     }
 
     public func start() throws {
@@ -75,23 +106,26 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
             model.dismissQuickCapture = { [weak self] in self?.hide() }
             model.showMain = { [weak self] in self?.showMain() }
             model.showQuick = { [weak self] in self?.showQuick() }
+            model.editConnection = { [weak self] target in self?.editConnection?(target) }
             model.takeScreenshot = { [weak self] in self?.screenshot() }
             model.shortcuts.isCaptureWindow = { [weak panel, weak mainWindow] window in
                 window === panel || window === mainWindow
             }
+            model.shortcuts.canPerform = { [weak self] action, window in
+                self?.canPerform(action, in: window) == true
+            }
             model.shortcuts.perform = { [weak self, weak model] action in
-                guard let self, let model, self.canChangeCaptureContext else { return }
+                guard let self, let model else { return }
                 switch action {
                 case .capture: self.showCapture()
                 case .screenshot: self.quickScreenshot()
-                case .paste:
-                    if model.editorOwner == .quick || model.pane == .capture { model.pasteMaterial() }
-                case .submit: if model.editorOwner == .quick || model.pane == .capture { model.submit() }
-                case .hide: if NSApp.keyWindow === self.panel { self.hide() }
+                case .paste: model.pasteMaterial()
+                case .submit: model.submit()
+                case .hide: self.hide()
                 }
             }
             try model.shortcuts.start()
-            if let message = model.shortcuts.message { model.error = message }
+            if let message = model.shortcuts.message { model.captureNotice = message }
             configureMenu()
             model.start()
             showMain()
@@ -115,7 +149,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
             ("粘贴材料", #selector(quickPaste)),
             ("框选截图", #selector(quickScreenshot)),
             ("采集记录", #selector(showQueue)),
-            ("Peer 与连接", #selector(showSettings)),
+            ("采集设置…", #selector(showSettings)),
         ] {
             let command = NSMenuItem(title: title, action: selector, keyEquivalent: "")
             command.target = self
@@ -129,15 +163,38 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
 
         let commands = NSMenuItem(title: "采集", action: nil, keyEquivalent: "")
         let capture = NSMenu(title: "采集")
-        for (title, action, key) in [
-            ("新想法", #selector(newThought), "n"), ("快捷采集", #selector(showQuick), ""),
-            ("采集记录", #selector(showQueue), ""), ("采集设置", #selector(showSettings), ""),
-        ] {
-            capture.addItem(withTitle: title, action: action, keyEquivalent: key).target = self
+        capture.addItem(withTitle: "新想法", action: #selector(newThought), keyEquivalent: "n").target = self
+        for action in ShortcutAction.allCases {
+            let item = NSMenuItem(title: action.title, action: #selector(performShortcut(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = Int(action.rawValue)
+            capture.addItem(item)
         }
+        capture.addItem(.separator())
+        capture.addItem(withTitle: "采集记录", action: #selector(showQueue), keyEquivalent: "").target = self
+        capture.addItem(withTitle: "采集设置…", action: #selector(showSettings), keyEquivalent: "").target = self
         commands.submenu = capture
         NSApp.mainMenu?.insertItem(commands, at: 1)
         commandItem = commands
+        shortcutObservation = model?.shortcuts.$bindings.sink { bindings in
+            for item in capture.items {
+                guard let action = ShortcutAction(rawValue: UInt32(item.tag)) else { continue }
+                item.keyEquivalent = bindings[action]?.menuKeyEquivalent ?? ""
+                item.keyEquivalentModifierMask = bindings[action]?.modifiers ?? []
+            }
+        }
+    }
+
+    private func canPerform(_ action: ShortcutAction, in window: NSWindow?) -> Bool {
+        guard canChangeCaptureContext, let model, model.shortcuts.recording == nil else { return false }
+        let quick = window === panel && model.editorOwner == .quick
+        let editor = quick || (window === mainWindow && model.pane == .capture && model.editorOwner == .main)
+        return model.canPerform(action, isEditor: editor, isQuickPanel: quick)
+    }
+
+    @objc private func performShortcut(_ sender: NSMenuItem) {
+        guard let action = ShortcutAction(rawValue: UInt32(sender.tag)) else { return }
+        model?.shortcuts.execute(action, in: NSApp.keyWindow)
     }
 
     @objc private func showCapture() {
@@ -222,7 +279,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
     }
     @objc private func showSettings() {
         guard canChangeCaptureContext else { return }
-        model?.openSettings()
+        showPreferences?()
     }
     @objc private func screenshot() {
         guard canChangeCaptureContext, let model, !model.submitting else { return }
@@ -361,6 +418,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         statusItem = nil
         if let commandItem { NSApp.mainMenu?.removeItem(commandItem) }
         commandItem = nil
+        shortcutObservation = nil
         try await model.flush()
         panel = nil
         mainWindow = nil

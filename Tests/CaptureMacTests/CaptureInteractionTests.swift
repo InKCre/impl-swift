@@ -12,12 +12,11 @@ struct CaptureInteractionTests {
         let model = try CaptureModel(directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
         defer { model.cancelWork() }
         var mainOpened = false
-        model.showMain = { mainOpened = true }
+        model.editConnection = { _ in mainOpened = true }
         model.submit()
         #expect(!model.hasContent)
         #expect(!model.submitting)
         #expect(!mainOpened)
-        #expect(!model.showingConnectionEditor)
         #expect(model.pane == .capture)
         #expect(model.error == nil)
     }
@@ -50,13 +49,13 @@ struct CaptureInteractionTests {
         defer { model.cancelWork() }
         model.thought = "主窗口中未提交的草稿"
         let previousID = model.draft.id
-        model.pane = .settings
+        model.pane = .peer
         model.editorOwner = .quick
         var presented: CaptureModel.EditorOwner?
         model.presentEditor = { presented = model.editorOwner }
         let payload = CapturePayload(entry: .selection, materials: [Material(text: "快捷采集的新材料")])
         await model.receive(payload)
-        #expect(model.pane == .settings)
+        #expect(model.pane == .peer)
         #expect(presented == .quick)
         #expect(model.draft.id == payload.submissionID)
         #expect(try await model.store.record(previousID)?.payload?.materials.first?.text == "主窗口中未提交的草稿")
@@ -72,7 +71,7 @@ struct CaptureInteractionTests {
         #expect(model.draft.id == currentID)
     }
 
-    @Test func mainCaptureRevealsEditorAndMissingConnectionOpensMainSettings() async throws {
+    @Test func missingConnectionUsesHostSettingsWithoutReplacingTheDraft() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
@@ -82,13 +81,57 @@ struct CaptureInteractionTests {
         #expect(model.pane == .capture)
         model.editorOwner = .quick
         var mainOpened = false
-        model.showMain = { mainOpened = true; model.editorOwner = .main }
+        model.editConnection = { _ in mainOpened = true }
         model.submit()
         #expect(mainOpened)
-        #expect(model.editorOwner == .main)
-        #expect(model.pane == .settings)
+        #expect(model.editorOwner == .quick)
+        #expect(model.pane == .capture)
         #expect(model.hasContent)
         #expect(model.lastContactAt == nil)
+    }
+
+    @Test func configuringWebAddressMakesExistingResultsOpenableWithoutRetargetingThem() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = try CaptureModel(directory: directory, identity: "dev.inkcre.result.\(UUID().uuidString)")
+        defer { model.cancelWork() }
+        let target = ConnectionTarget(host: "fixture.test", database: "inkcre", username: "inkcre_core")
+        var record = CaptureRecord()
+        record.target = target
+        record.state = .confirmed
+        record.result = CaptureResult(submissionID: record.id, rootBlockID: 42, committedAt: Date(), availability: .available)
+        #expect(model.resultURL(for: record) == nil)
+        var configured = target
+        configured.webURL = URL(string: "https://fixture.test")
+        model.connection = configured
+        #expect(model.resultURL(for: record)?.absoluteString == "https://fixture.test/info-base/list/blocks/42/content")
+        #expect(record.target == target)
+        model.connection = ConnectionTarget(host: "other.test", database: "other", username: "inkcre_core", webURL: URL(string: "https://other.test"))
+        #expect(model.resultURL(for: record) == nil)
+        model.connection = configured
+        record.result = CaptureResult(submissionID: record.id, rootBlockID: 42, committedAt: Date(), availability: .deleted)
+        #expect(model.resultURL(for: record) == nil)
+    }
+
+    @Test func commandAvailabilityFollowsEditorContentAndPresentation() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = try CaptureModel(directory: directory, identity: "dev.inkcre.commands.\(UUID().uuidString)")
+        defer { model.cancelWork() }
+        #expect(!model.canPerform(.submit, isEditor: true, isQuickPanel: false))
+        model.thought = "待收入的内容"
+        #expect(model.canPerform(.submit, isEditor: true, isQuickPanel: false))
+        #expect(!model.canPerform(.submit, isEditor: false, isQuickPanel: false))
+        #expect(!model.canPerform(.paste, isEditor: false, isQuickPanel: false))
+        #expect(!model.canPerform(.hide, isEditor: true, isQuickPanel: false))
+        #expect(model.canPerform(.hide, isEditor: true, isQuickPanel: true))
+        model.requestDiscard(model.draft)
+        for action in ShortcutAction.allCases {
+            #expect(!model.canPerform(action, isEditor: true, isQuickPanel: true))
+        }
+        model.removalRequest = nil
+        model.submitting = true
+        #expect(!model.canPerform(.screenshot, isEditor: true, isQuickPanel: true))
     }
 
     @Test func materialRemovalRequiresConfirmationAndPreservesOtherContent() async throws {

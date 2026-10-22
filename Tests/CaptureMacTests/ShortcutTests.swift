@@ -52,6 +52,57 @@ struct ShortcutTests {
         #expect(String(utf16CodeUnits: result, count: count) == original)
     }
 
+    @Test func unavailableActionsPassThroughAndAvailableActionsRunOnce() throws {
+        _ = NSApplication.shared
+        let (defaults, domain) = defaults()
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let shortcuts = try GlobalShortcuts(defaults: defaults)
+        shortcuts.isCaptureWindow = { _ in true }
+        var enabled = false
+        var performed = 0
+        shortcuts.canPerform = { _, _ in enabled }
+        shortcuts.perform = { _ in performed += 1 }
+        let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+            timestamp: 0, windowNumber: 0, context: nil, characters: "\r",
+            charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: UInt16(kVK_Return)))
+        #expect(shortcuts.handle(event) === event)
+        #expect(performed == 0)
+        enabled = true
+        #expect(shortcuts.handle(event) == nil)
+        #expect(performed == 1)
+    }
+
+    @Test func invalidSavedBindingDoesNotPreventOpeningSettingsOrDisableOtherActions() throws {
+        let (defaults, domain) = defaults()
+        defer { defaults.removePersistentDomain(forName: domain) }
+        var saved = Dictionary(uniqueKeysWithValues: ShortcutAction.allCases.map { ($0, $0.defaultShortcut) })
+        saved[.hide] = RecordedShortcut(keyCode: UInt16(kVK_ANSI_W), modifiers: .command, keyLabel: "W")
+        let data = try JSONEncoder().encode(saved)
+        defaults.set(data, forKey: GlobalShortcuts.settingsKey)
+        let shortcuts = try GlobalShortcuts(defaults: defaults)
+        #expect(shortcuts.bindings[.hide] == nil)
+        #expect(shortcuts.bindings[.capture] == ShortcutAction.capture.defaultShortcut)
+        #expect(shortcuts.message?.contains("⌘W") == true)
+        #expect(defaults.data(forKey: GlobalShortcuts.settingsKey) == data)
+    }
+
+    @Test func nativeWindowAndEditingCommandsCannotBeReassigned() throws {
+        let (defaults, domain) = defaults()
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let shortcuts = try GlobalShortcuts(defaults: defaults)
+        for (key, label, modifiers) in [
+            (kVK_ANSI_W, "W", NSEvent.ModifierFlags.command), (kVK_ANSI_Q, "Q", .command),
+            (kVK_ANSI_Comma, ",", .command), (kVK_ANSI_V, "V", .command),
+            (kVK_ANSI_S, "S", [.command, .option])
+        ] {
+            #expect(throws: PeerError.self) {
+                try shortcuts.set(RecordedShortcut(keyCode: UInt16(key), modifiers: modifiers, keyLabel: label), for: .hide)
+            }
+        }
+        #expect(shortcuts.bindings[.hide] == ShortcutAction.hide.defaultShortcut)
+        #expect(defaults.data(forKey: GlobalShortcuts.settingsKey) == nil)
+    }
+
     private func defaults() -> (UserDefaults, String) {
         let name = "dev.inkcre.shortcut-tests.\(UUID().uuidString)"
         return (UserDefaults(suiteName: name)!, name)

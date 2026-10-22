@@ -10,6 +10,7 @@ final class GlobalShortcuts: ObservableObject {
     @Published private(set) var recording: ShortcutAction?
     @Published private(set) var message: String?
     var perform: ((ShortcutAction) -> Void)?
+    var canPerform: ((ShortcutAction, NSWindow?) -> Bool)?
     var isCaptureWindow: ((NSWindow?) -> Bool)?
     private let defaults: UserDefaults
     private var keys: [ShortcutAction: EventHotKeyRef] = [:]
@@ -26,7 +27,15 @@ final class GlobalShortcuts: ObservableObject {
             bindings = Dictionary(uniqueKeysWithValues: ShortcutAction.allCases.map { ($0, $0.defaultShortcut) })
 
         }
-        for (action, shortcut) in bindings { try validate(shortcut, for: action) }
+        var failures: [String] = []
+        for (action, shortcut) in bindings {
+            do { try validate(shortcut, for: action) }
+            catch {
+                bindings[action] = nil
+                failures.append("已停用无效的“\(action.title)”快捷键：\(error.localizedDescription)")
+            }
+        }
+        if !failures.isEmpty { message = failures.joined(separator: "\n") }
     }
 
     func start() throws {
@@ -41,7 +50,7 @@ final class GlobalShortcuts: ObservableObject {
             guard status == noErr, identity.signature == 0x494e4b43,
                   let action = ShortcutAction(rawValue: identity.id) else { return OSStatus(eventNotHandledErr) }
             let owner = Unmanaged<GlobalShortcuts>.fromOpaque(context).takeUnretainedValue()
-            MainActor.assumeIsolated { if owner.recording == nil { owner.perform?(action) } }
+            MainActor.assumeIsolated { _ = owner.execute(action, in: nil) }
             return noErr
         }, 1, &type, Unmanaged.passUnretained(self).toOpaque(), &handler)
         guard status == noErr else { throw PeerError.needsAction("无法启用快捷键事件，请重新打开 InKCre。") }
@@ -121,8 +130,16 @@ final class GlobalShortcuts: ObservableObject {
         guard let action = ShortcutAction.allCases.first(where: {
             !$0.isGlobal && bindings[$0]?.keyCode == event.keyCode && bindings[$0]?.modifierBits == modifiers
         }) else { return event }
-        if !event.isARepeat { perform?(action) }
+        guard canPerform?(action, event.window) == true else { return event }
+        if !event.isARepeat { _ = execute(action, in: event.window) }
         return nil
+    }
+
+    @discardableResult
+    func execute(_ action: ShortcutAction, in window: NSWindow?) -> Bool {
+        guard recording == nil, canPerform?(action, window) == true, let perform else { return false }
+        perform(action)
+        return true
     }
 
     private func validate(_ shortcut: RecordedShortcut, for action: ShortcutAction) throws {

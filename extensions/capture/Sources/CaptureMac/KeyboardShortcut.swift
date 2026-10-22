@@ -57,6 +57,16 @@ struct RecordedShortcut: Codable, Equatable, Sendable {
         [(NSEvent.ModifierFlags.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘")]
             .filter { modifiers.contains($0.0) }.map(\.1).joined() + keyLabel
     }
+    var menuKeyEquivalent: String {
+        let special = ["↩": "\r", "Esc": "\u{1b}", "⇥": "\t", "空格": " ", "⌫": "\u{8}", "⌦": "\u{7f}",
+                       "←": "\u{f702}", "→": "\u{f703}", "↑": "\u{f700}", "↓": "\u{f701}",
+                       "↖": "\u{f729}", "↘": "\u{f72b}", "⇞": "\u{f72c}", "⇟": "\u{f72d}"]
+        if let key = special[keyLabel] { return key }
+        if keyLabel.hasPrefix("F"), let number = Int(keyLabel.dropFirst()), (1...20).contains(number),
+           let scalar = UnicodeScalar(0xf703 + number) { return String(scalar) }
+        return keyLabel.lowercased()
+    }
+
     var carbonModifiers: UInt32 {
         [(NSEvent.ModifierFlags.control, controlKey), (.option, optionKey), (.shift, shiftKey), (.command, cmdKey)]
             .reduce(0) { $0 | (modifiers.contains($1.0) ? UInt32($1.1) : 0) }
@@ -65,6 +75,14 @@ struct RecordedShortcut: Codable, Equatable, Sendable {
         left.keyCode == right.keyCode && left.modifierBits == right.modifierBits
     }
     func validate(for action: ShortcutAction) throws {
+        // Preserve the app's window, navigation and text-editing commands.
+        let commandKeys = [kVK_ANSI_Q, kVK_ANSI_W, kVK_ANSI_H, kVK_ANSI_M, kVK_ANSI_N,
+                           kVK_ANSI_Comma, kVK_ANSI_C, kVK_ANSI_V, kVK_ANSI_X, kVK_ANSI_A, kVK_ANSI_Z]
+        let reserved = modifiers == .command && commandKeys.contains(Int(keyCode))
+            || modifiers == [.command, .shift] && [kVK_ANSI_Z, kVK_ANSI_W].contains(Int(keyCode))
+            || modifiers == [.command, .option] && [kVK_ANSI_H, kVK_ANSI_S].contains(Int(keyCode))
+            || modifiers == [.command, .control] && keyCode == kVK_ANSI_F
+        guard !reserved else { throw PeerError.invalid("\(label) 是应用的标准命令，请使用其他组合。原设置未更改。") }
         let plainEscape = action == .hide && keyCode == kVK_Escape && modifierBits == 0
         guard keyCode <= 127, !keyLabel.isEmpty,
               modifierBits & ~Self.allowedModifiers.rawValue == 0,

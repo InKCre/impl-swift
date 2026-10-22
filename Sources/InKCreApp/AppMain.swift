@@ -15,23 +15,30 @@ enum InKCreApplication {
 }
 
 @MainActor
-final class PeerHost: NSObject, NSApplicationDelegate {
-    private let context: PeerHostContext
-    private let runtime: BundledExtensionRuntime
+final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserInterfaceValidations {
+    let context: PeerHostContext
+    let runtime: BundledExtensionRuntime
+    let capture: CaptureExtension
     private var module: any NativeExtension { runtime.module }
-    override init() {
+    override convenience init() {
         let identity = Bundle.main.bundleIdentifier ?? "dev.inkcre.capture"
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(identity)
-        context = PeerHostContext(identity: identity, directory: directory)
-        runtime = BundledExtensionRuntime(module: CaptureExtension(context: context))
+        self.init(context: PeerHostContext(identity: identity, directory: directory))
+    }
+
+    init(context: PeerHostContext, defaults: UserDefaults = .standard) {
+        self.context = context
+        capture = CaptureExtension(context: context)
+        runtime = BundledExtensionRuntime(module: capture, defaults: defaults)
         super.init()
+        capture.showPreferences = { [weak self] in self?.showSettings(.capture) }
+        capture.editConnection = { [weak self] target in self?.editConnection(target) }
     }
     private var presence: Task<Void, Never>?
-    private var connectionIssue: String?
-    private var manager: NSWindow?
-    private var toggle: NSButton?
-    private var status: NSTextField?
+    @Published var connectionIssue: String?
+    @Published var connection: ConnectionTarget?
+    private var manager: PeerSettingsWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -60,7 +67,7 @@ final class PeerHost: NSObject, NSApplicationDelegate {
         if !runtime.running { showExtensions(nil) }
     }
 
-    private func installHostMenu() {
+    func installHostMenu() {
         let main = NSMenu()
         func addMenu(_ title: String) -> NSMenu {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
@@ -73,7 +80,7 @@ final class PeerHost: NSObject, NSApplicationDelegate {
         app.addItem(
             withTitle: "关于 InKCre", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: "")
-        app.addItem(withTitle: "设置…", action: #selector(showExtensions(_:)), keyEquivalent: ",").target = self
+        app.addItem(withTitle: "设置…", action: #selector(showPreferences(_:)), keyEquivalent: ",").target = self
         app.addItem(withTitle: "Peer 连接…", action: #selector(showConnection(_:)), keyEquivalent: "").target =
             self
         app.addItem(withTitle: "开源许可与致谢…", action: #selector(showLicenses(_:)), keyEquivalent: "").target =
@@ -103,7 +110,7 @@ final class PeerHost: NSObject, NSApplicationDelegate {
         view.addItem(
             withTitle: "显示/隐藏侧栏", action: #selector(NSSplitViewController.toggleSidebar(_:)),
             keyEquivalent: "s"
-        ).keyEquivalentModifierMask = [.command, .control]
+        ).keyEquivalentModifierMask = [.command, .option]
         view.addItem(withTitle: "进入全屏", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
             .keyEquivalentModifierMask = [.command, .control]
         let window = addMenu("窗口")
@@ -111,7 +118,7 @@ final class PeerHost: NSObject, NSApplicationDelegate {
             withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         window.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        window.addItem(withTitle: "Peer 与扩展", action: #selector(showExtensions(_:)), keyEquivalent: "")
+        window.addItem(withTitle: "扩展设置…", action: #selector(showExtensions(_:)), keyEquivalent: "")
             .target = self
         window.addItem(
             withTitle: "前置全部窗口", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
@@ -119,98 +126,64 @@ final class PeerHost: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = main
     }
 
-    @objc private func showExtensions(_ sender: Any?) {
-        if manager == nil {
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 500, height: 250),
-                styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            window.title = "InKCre 扩展"
-            window.isReleasedWhenClosed = false
-            let title = NSTextField(labelWithString: "随手收集 · \(module.descriptor.name)")
-            title.font = .boldSystemFont(ofSize: 16)
-            let version = NSTextField(
-                labelWithString: "\(module.descriptor.distribution) · \(module.descriptor.version) · 随应用交付")
-            version.textColor = .secondaryLabelColor
-            let button = NSButton(
-                checkboxWithTitle: "在此 Mac 启用", target: self, action: #selector(changeEnabled(_:)))
-            let label = NSTextField(wrappingLabelWithString: "")
-            let stack = NSStackView(views: [title, version, button, label])
-            stack.orientation = .vertical
-            stack.alignment = .leading
-            stack.spacing = 14
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            window.contentView?.addSubview(stack)
-            if let content = window.contentView {
-                NSLayoutConstraint.activate([
-                    stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
-                    stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
-                    stack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
-                ])
-            }
-            toggle = button
-            status = label
-            manager = window
-            window.center()
+    @objc private func showPreferences(_ sender: Any?) { showSettings() }
+    @objc private func showExtensions(_ sender: Any?) { showSettings(.extensions) }
+    @objc private func showConnection(_ sender: Any?) { showSettings(.connection) }
+
+    func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if [#selector(showPreferences(_:)), #selector(showConnection(_:)), #selector(showExtensions(_:))].contains(item.action) {
+            return manager?.attachedSheet != nil || capture.canOpenSettings
         }
-        updateStatus()
+        return true
+    }
+
+    private func showSettings(_ pane: PeerSettingsWindow.Pane? = nil) {
+        guard manager?.attachedSheet != nil || capture.canOpenSettings else { return }
+        capture.prepareForSettings()
+        if manager == nil { manager = PeerSettingsWindow(host: self) }
+        if let pane, manager?.attachedSheet == nil { manager?.select(pane) }
         NSApp.activate(ignoringOtherApps: true)
         manager?.makeKeyAndOrderFront(nil)
+        Task {
+            do { connection = try await context.connections.load() }
+            catch { connectionIssue = error.localizedDescription }
+        }
     }
 
-    @objc private func changeEnabled(_ sender: NSButton) {
+    func changeEnabled(_ enable: Bool) {
         guard !runtime.applying else { return }
-        let enable = sender.state == .on
-        sender.isEnabled = false
-        status?.stringValue = "正在应用…"
         Task {
-            defer { updateStatus() }
+            objectWillChange.send()
             do { try await runtime.setEnabled(enable) } catch { show(error) }
+            manager?.refreshCaptureSettings(host: self)
+            updateStatus()
         }
     }
 
-    private func updateStatus() {
-        toggle?.state = runtime.enabled ? .on : .off
-        toggle?.isEnabled = !runtime.applying
-        status?.stringValue =
-            runtime.applying
-            ? "正在应用…"
-            : runtime.syncIssue ?? connectionIssue ?? (runtime.running ? "本机运行中" : "已停用；本机材料与共享内容保留")
-    }
+    private func updateStatus() { objectWillChange.send() }
 
-    @objc private func showConnection(_ sender: Any?) {
-        showExtensions(nil)
-        Task {
-            do {
-                let target = try await context.connections.load()
-                guard let manager, manager.attachedSheet == nil else { return }
-                let sheet = NSWindow(
-                    contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
-                let close: @MainActor @Sendable () -> Void = { [weak manager, weak sheet] in
-                    guard let manager, let sheet else { return }
-                    manager.endSheet(sheet)
-                    sheet.orderOut(nil)
-                }
-                let content = NSHostingView(
-                    rootView: PeerConnectionEditor(
-                        settings: context.connections, credentials: context.credentials,
-                        target: target, onCancel: close,
-                        onSaved: { [weak self] _ in
-                            close()
-                            guard let self else { return }
-                            Task {
-                                do {
-                                    await self.runtime.waitUntilIdle()
-                                    try await self.runtime.stop()
-                                    try self.runtime.startIfEnabled()
-                                    self.updateStatus()
-                                } catch { self.show(error) }
-                            }
-                        }))
-                sheet.contentView = content
-                sheet.setContentSize(content.fittingSize)
-                manager.beginSheet(sheet, completionHandler: { _ in })
-            } catch { show(error) }
+    func editConnection(_ target: ConnectionTarget?) {
+        guard capture.canOpenSettings else { return }
+        showSettings(.connection)
+        guard let manager, manager.attachedSheet == nil else { return }
+        let sheet = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
+        let close: @MainActor @Sendable () -> Void = { [weak manager, weak sheet] in
+            guard let manager, let sheet else { return }
+            manager.endSheet(sheet)
+            sheet.orderOut(nil)
         }
+        let content = NSHostingView(rootView: PeerConnectionEditor(
+            settings: context.connections, credentials: context.credentials,
+            target: target, onCancel: close,
+            onSaved: { [weak self] target in
+                close()
+                self?.connection = target
+                self?.connectionIssue = nil
+                self?.capture.connectionDidChange(target)
+            }))
+        sheet.contentView = content
+        sheet.setContentSize(content.fittingSize)
+        manager.beginSheet(sheet)
     }
 
     @objc private func showLicenses(_ sender: Any?) {

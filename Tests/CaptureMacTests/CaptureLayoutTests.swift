@@ -1,4 +1,5 @@
 import AppKit
+import Capture
 import SwiftUI
 import PeerCore
 import PeerMacUI
@@ -66,6 +67,67 @@ struct CaptureLayoutTests {
         view.cacheDisplay(in: view.bounds, to: bitmap)
         if let path = ProcessInfo.processInfo.environment["INKCRE_LAYOUT_EVIDENCE_DIR"] {
             try #require(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: path).appendingPathComponent("native-connection.png"))
+        }
+    }
+
+    @Test func mainWindowSidebarAndPrimarySurfacesRenderOffscreen() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = try CaptureModel(directory: directory, identity: "dev.inkcre.surfaces.\(UUID().uuidString)")
+        defer { model.cancelWork() }
+        let window = PeerMainWindow(model: model)
+        window.setFrameAutosaveName("")
+        window.setFrame(NSRect(x: 0, y: 0, width: 760, height: 520), display: false)
+        defer { window.orderOut(nil) }
+        let item = NSMenuItem(title: "侧栏", action: #selector(NSSplitViewController.toggleSidebar(_:)), keyEquivalent: "s")
+        #expect(window.validateUserInterfaceItem(item))
+        #expect(item.title == "隐藏侧栏")
+        #expect(window.tryToPerform(item.action!, with: item))
+        #expect(model.columnVisibility == .detailOnly)
+        #expect(window.validateUserInterfaceItem(item))
+        #expect(item.title == "显示侧栏")
+        try await snapshot(window, named: "main-sidebar-hidden")
+        #expect(window.tryToPerform(item.action!, with: item))
+        #expect(model.columnVisibility == .all)
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            window.appearance = NSAppearance(named: appearance)
+            for pane in [CaptureModel.Pane.capture, .queue, .peer] {
+                model.pane = pane
+                try await snapshot(window, named: "main-\(pane)-\(appearance.rawValue)")
+            }
+            model.records = [CaptureRecord(payload: CapturePayload(annotation: "只有补充想法的草稿也必须有预览。"))]
+            model.pane = .queue
+            try await snapshot(window, named: "records-annotation-\(appearance.rawValue)")
+            model.records = []
+        }
+        let auxiliary = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 560),
+                                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        defer { auxiliary.orderOut(nil) }
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            auxiliary.appearance = NSAppearance(named: appearance)
+            auxiliary.contentViewController = NSHostingController(rootView: CaptureSettingsView(model: model))
+            auxiliary.setContentSize(NSSize(width: 600, height: 560))
+            try await snapshot(auxiliary, named: "capture-settings-\(appearance.rawValue)")
+            model.editorOwner = .quick
+            model.thought = "用于界面验收的合成想法，不读取剪贴板或屏幕。"
+            auxiliary.contentViewController = NSHostingController(rootView: QuickCaptureView(model: model))
+            auxiliary.setContentSize(NSSize(width: 500, height: 450))
+            try await snapshot(auxiliary, named: "quick-\(appearance.rawValue)")
+        }
+        #expect(!window.isVisible && !auxiliary.isVisible)
+    }
+
+    private func snapshot(_ window: NSWindow, named name: String) async throws {
+        try await Task.sleep(for: .milliseconds(200))
+        let view = try #require(window.contentView?.superview)
+        view.layoutSubtreeIfNeeded()
+        let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        #expect(bitmap.pixelsWide >= 500 && bitmap.pixelsHigh >= 400)
+        if let path = ProcessInfo.processInfo.environment["INKCRE_LAYOUT_EVIDENCE_DIR"] {
+            try #require(bitmap.representation(using: .png, properties: [:])).write(to:
+                URL(fileURLWithPath: path).appendingPathComponent("\(name).png"))
         }
     }
 

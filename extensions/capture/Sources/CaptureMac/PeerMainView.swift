@@ -5,7 +5,7 @@ struct PeerMainView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $model.columnVisibility) {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Image(nsImage: colorScheme == .dark ? BrandAssets.darkMark : BrandAssets.lightMark)
@@ -18,12 +18,11 @@ struct PeerMainView: View {
                 }.padding()
                 List(selection: Binding(get: { Optional(model.pane) }, set: {
                     guard let value = $0 else { return }
-                    if value == .settings { model.openSettings() }
-                    else { model.pane = value }
+                    model.pane = value
                 })) {
                     Label("采集", systemImage: "square.and.pencil").tag(CaptureModel.Pane.capture)
                     Label("记录", systemImage: "tray.full").tag(CaptureModel.Pane.queue)
-                    Label("Peer 与连接", systemImage: "network").tag(CaptureModel.Pane.settings)
+                    Label("Peer 与连接", systemImage: "network").tag(CaptureModel.Pane.peer)
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(model.connection?.name ?? "未连接信息库")
@@ -44,7 +43,7 @@ struct PeerMainView: View {
                         }
                     } else { CaptureEditor(model: model) }
                 case .queue: CaptureRecordsView(model: model)
-                case .settings: ConnectionView(model: model)
+                case .peer: ConnectionView(model: model)
                 }
             }.frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
                 .navigationTitle(title)
@@ -73,7 +72,7 @@ struct PeerMainView: View {
         switch model.pane {
         case .capture: "采集"
         case .queue: "记录"
-        case .settings: "Peer 与连接"
+        case .peer: "Peer 与连接"
         }
     }
 }
