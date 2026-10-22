@@ -4,4 +4,4 @@
 
 Host 提供 PeerCore 的数据库、标准图／Storage、持久目录、凭据和扩展生命周期。精确分发身份来自 `Sources/Capture/Resources/extension.json`；随签名应用交付并独立启停，不依赖另一个 Peer 执行收入。
 
-在仓库根执行 `swift test`；本包可通过 `swift build --package-path extensions/capture` 单独构建。Cida 来源和 Apache-2.0 许可见 Legal/Cida，原创代码见 LICENSE。
+在仓库根执行 `swift test`；本包可通过 `swift build --package-path extensions/capture` 单独构建。Cida 选区读取与采集协调改编的 Apache-2.0 许可见 Legal/Cida；BetterShot 应用内选区与冻结图组件的 BSD-3-Clause 许可、固定版本和修改说明见 Legal/BetterShot。冻结帧只在截图会话内存中存在，确认后裁剪原图 PNG；停用关闭选区并丢弃会话，不调用系统截图工具栏。原创代码见 LICENSE。
