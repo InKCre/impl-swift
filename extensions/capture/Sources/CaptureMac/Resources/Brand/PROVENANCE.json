@@ -1,0 +1,65 @@
+{
+  "checked_on": "2026-10-21",
+  "purpose": "Preserve current InKCre mark and package native vector assets; no redesign.",
+  "sources": [
+    {
+      "local_path": "sources/web-logo-256.svg",
+      "repository": "InKCre/impl-ts",
+      "path": "apps/client-web/public/logo/256.svg",
+      "commit": "2d260e3f194ba34858243d41d19afa889a2d4060",
+      "git_blob_sha": "8ebc4f5bea14cbd550a32fe6ec7e0c8bbbd17837",
+      "url": "https://github.com/InKCre/impl-ts/blob/2d260e3f194ba34858243d41d19afa889a2d4060/apps/client-web/public/logo/256.svg",
+      "role": "Standard geometry master, 256 viewBox. Used at logical sizes 48 and above in this pack."
+    },
+    {
+      "local_path": "sources/ui-logo-32.svg",
+      "repository": "InKCre/ui",
+      "path": "packages/web/src/logo.svg",
+      "commit": "cd434bf11eaeae0fe59e230008cb15c8a9f950f6",
+      "git_blob_sha": "2727331578969757f6ac17c069e2793f908a3f6f",
+      "url": "https://github.com/InKCre/ui/blob/cd434bf11eaeae0fe59e230008cb15c8a9f950f6/packages/web/src/logo.svg",
+      "same_blob_url": "https://github.com/InKCre/impl-ts/blob/2d260e3f194ba34858243d41d19afa889a2d4060/apps/client-web/public/logo/32.svg",
+      "role": "Existing 32-viewBox small-size geometry, shared by design system and current web app. Used at logical sizes up to 32 in this pack."
+    },
+    {
+      "local_path": "sources/website-mark-32.svg",
+      "repository": "InKCre/docs",
+      "path": "website/content/public/images/inkcre-mark.svg",
+      "commit": "7449135fefdd6056fecba387e59e3005aed5eafd",
+      "git_blob_sha": "51b8c832f4708c10e612f9c8702e51346e4cf248",
+      "url": "https://github.com/InKCre/docs/blob/7449135fefdd6056fecba387e59e3005aed5eafd/website/content/public/images/inkcre-mark.svg",
+      "role": "Corroborating current website logo; not the rendering master because its connector path differs from UI source line encoding."
+    }
+  ],
+  "additional_evidence": [
+    {
+      "url": "https://github.com/InKCre/impl-ts/blob/2d260e3f194ba34858243d41d19afa889a2d4060/apps/client-web/src/App.vue",
+      "finding": "Current app header references /logo/32.svg."
+    },
+    {
+      "url": "https://github.com/InKCre/ui/blob/cd434bf11eaeae0fe59e230008cb15c8a9f950f6/packages/web/histoire.config.ts",
+      "finding": "Current UI design-system logo points to src/logo.svg."
+    },
+    {
+      "url": "https://github.com/InKCre/ui/blob/cd434bf11eaeae0fe59e230008cb15c8a9f950f6/docs/design/visual-language.md",
+      "finding": "Current visual language describes a neutral black/white/gray framework, rectilinear shapes and a flat appearance."
+    },
+    {
+      "url": "https://github.com/InKCre/impl-swift/blob/main/D3LibMin/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "finding": "Swift app includes light and dark/tinted raster versions of the same mark. Inspected for corroboration only, not traced or used as source."
+    }
+  ],
+  "excluded_reference": {
+    "url": "https://github.com/InKCre/impl-ts/blob/2d260e3f194ba34858243d41d19afa889a2d4060/apps/client-webext/assets/inkcre.svg",
+    "git_blob_sha": "70ec5a6c03584be8317dbb4bf3fd23e1ff8be2e8",
+    "reason": "Current extension still contains a traced-looking 200px asset with near-white rounded background, off-black tones and a detached gray speck; also identical to asset in archived client-webext. Excluded in favor of clean native web/UI sources. Not a claim that the extension stopped using it."
+  },
+  "derived_changes": [
+    "Preserve all source foreground coordinates, connector strokes and viewBox proportions.",
+    "Replace white nested-square knockout with a true even-odd transparent counter.",
+    "Provide original black/gray, reverse white/gray, solid black and solid white colorways.",
+    "Provide transparent canvases plus four contrasting white/black background combinations.",
+    "Select existing 32 geometry for logical sizes <=32 and existing 256 geometry for >=48. This threshold is a pack convention, not an independently verified official brand rule.",
+    "Retina exports select geometry by logical display size, not physical raster size."
+  ]
+}

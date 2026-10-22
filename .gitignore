@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+dist/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.local-development-signing-identity
+**/Package.resolved
+!/Package.resolved
