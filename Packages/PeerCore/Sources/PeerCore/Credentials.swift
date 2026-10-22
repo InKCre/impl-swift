@@ -39,7 +39,7 @@ public struct CredentialStore: Sendable {
         guard status == errSecSuccess, let data = result as? Data,
             let secret = String(data: data, encoding: .utf8)
         else {
-            throw PeerError.needsAction("无法读取此信息库的凭据，请在连接设置中重新保存。")
+            throw PeerError.needsAction("无法读取此信息库的凭据，请更新数据库密码。")
         }
         return secret
     }

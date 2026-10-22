@@ -211,6 +211,18 @@ public actor CaptureStore {
         try save(value)
     }
 
+    public func updateWebAddress(_ id: UUID, address: String) throws -> CaptureRecord {
+        guard var record = try record(id), record.state == .confirmed, var target = record.target,
+              let url = URL(string: address.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { throw PeerError.invalid("请输入有效的 Web 地址，且仅为已收入记录配置地址。") }
+        // The display address can change; the frozen database destination and receipt cannot.
+        target.webURL = url
+        try target.validate()
+        record.target = target
+        try save(record)
+        return record
+    }
+
     public func discardDraft(_ id: UUID) throws {
         guard !deletedIDs.contains(id), let value = try record(id) else { return }
         guard value.state == .draft else {

@@ -33,7 +33,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         runtime = BundledExtensionRuntime(module: capture, defaults: defaults)
         super.init()
         capture.showPreferences = { [weak self] in self?.showSettings(.capture) }
-        capture.editConnection = { [weak self] target in self?.editConnection(target) }
+        capture.editConnection = { [weak self] target, completion in self?.editConnection(target, onFinished: completion) }
     }
     private var presence: Task<Void, Never>?
     @Published var connectionIssue: String?
@@ -162,7 +162,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
 
     private func updateStatus() { objectWillChange.send() }
 
-    func editConnection(_ target: ConnectionTarget?) {
+    func editConnection(_ target: ConnectionTarget?, onFinished: (@MainActor () -> Void)? = nil) {
         guard capture.canOpenSettings else { return }
         showSettings(.connection)
         guard let manager, manager.attachedSheet == nil else { return }
@@ -174,16 +174,21 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         }
         let content = NSHostingView(rootView: PeerConnectionEditor(
             settings: context.connections, credentials: context.credentials,
-            target: target, onCancel: close,
+            target: target, saveTitle: onFinished == nil ? "保存" : "保存并返回采集", onCancel: close,
             onSaved: { [weak self] target in
-                close()
                 self?.connection = target
                 self?.connectionIssue = nil
                 self?.capture.connectionDidChange(target)
+                close()
             }))
         sheet.contentView = content
         sheet.setContentSize(content.fittingSize)
-        manager.beginSheet(sheet)
+        manager.beginSheet(sheet) { [weak manager] _ in
+            if let onFinished {
+                manager?.orderOut(nil)
+                onFinished()
+            }
+        }
     }
 
     @objc private func showLicenses(_ sender: Any?) {

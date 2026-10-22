@@ -63,7 +63,7 @@ final class CaptureModel: ObservableObject {
     var dismissQuickCapture: (() -> Void)?
     var showMain: (() -> Void)?
     var showQuick: (() -> Void)?
-    var editConnection: ((ConnectionTarget?) -> Void)?
+    var editConnection: ((ConnectionTarget?, (@MainActor () -> Void)?) -> Void)?
     let store: CaptureStore
     let credentials: CredentialStore
     let connections: ConnectionSettings
@@ -72,18 +72,20 @@ final class CaptureModel: ObservableObject {
     private var heartbeat: Task<Void, Never>?
     private var connectionCheck: Task<Void, Never>?
     private var connectionRevision = UUID()
-    private var submissionStatusID: UUID?
+    @Published private(set) var submissionStatusID: UUID?
+    @Published var selectedRecordID: UUID?
     private var editRevision = 0
     private var actions: [UUID: Task<Void, Never>] = [:]
     private var stopping = false
 
-    init(directory: URL, identity: String, connections: ConnectionSettings? = nil) throws {
+    init(directory: URL, identity: String, connections: ConnectionSettings? = nil,
+         client: any CaptureTransport = CaptureClient()) throws {
         self.connections =
             connections ?? ConnectionSettings(url: directory.appendingPathComponent("connection.json"))
         shortcuts = try GlobalShortcuts()
         store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
         credentials = CredentialStore(service: "\(identity).connections")
-        queue = CaptureQueue(store: store, credentials: credentials)
+        queue = CaptureQueue(store: store, credentials: credentials, client: client)
     }
 
     func canPerform(_ action: ShortcutAction, isEditor: Bool, isQuickPanel: Bool) -> Bool {
@@ -198,7 +200,6 @@ final class CaptureModel: ObservableObject {
 
     func saveSoon() {
         guard !stopping else { return }
-        submissionStatusID = nil
         editRevision += 1
         saveTask?.cancel()
         saveStatus = "正在保留草稿…"
@@ -248,7 +249,6 @@ final class CaptureModel: ObservableObject {
                 saveTask?.cancel()
                 try await flush()
                 draft = CaptureRecord()
-                submissionStatusID = nil
                 captureNotice = notice
                 saveStatus = "写下此刻的想法"
                 revealEditor()
@@ -268,7 +268,6 @@ final class CaptureModel: ObservableObject {
                 saveTask?.cancel()
                 try await flush()
                 draft = CaptureRecord(payload: CapturePayload(entry: .paste, materials: materials))
-                submissionStatusID = nil
                 captureNotice = nil
                 try await flush()
                 revealEditor()
@@ -294,7 +293,6 @@ final class CaptureModel: ObservableObject {
             try await flush()
             if let request, request != selectionRequest { return }
             draft = CaptureRecord(payload: payload)
-            submissionStatusID = nil
             captureNotice = notice
             try await flush()
             revealEditor()
@@ -307,7 +305,16 @@ final class CaptureModel: ObservableObject {
     func submit() {
         guard !submitting, hasContent else { return }
         guard let connection else {
-            openConnectionSettings()
+            let draftID = draft.id
+            let owner = editorOwner
+            editConnection?(nil, { [weak self] in
+                guard let self, !self.stopping, self.draft.id == draftID else { return }
+                self.editorOwner = owner
+                self.captureNotice = self.connection == nil
+                    ? "连接信息库后即可收入，也可以继续编辑。"
+                    : "连接已配置，请确认内容后点击收入。"
+                self.revealEditor()
+            })
             return
         }
         // An input method owns Return until its marked text is committed.
@@ -319,7 +326,8 @@ final class CaptureModel: ObservableObject {
                 let frozen = try await store.freeze(draft, target: connection)
                 draft = CaptureRecord()
                 submissionStatusID = frozen.id
-                saveStatus = frozen.statusLabel
+                captureNotice = nil
+                saveStatus = "随时写下想法，或加入材料"
                 try await refresh()
                 submitting = false
                 await sendPending(force: true)
@@ -339,9 +347,6 @@ final class CaptureModel: ObservableObject {
 
     func refresh() async throws {
         records = try await store.records()
-        if !hasContent, let id = submissionStatusID, let record = records.first(where: { $0.id == id }) {
-            saveStatus = record.statusLabel
-        }
     }
 
     func resume(_ record: CaptureRecord) {
@@ -359,7 +364,6 @@ final class CaptureModel: ObservableObject {
                     throw PeerError.invalid("这份草稿已变更，请刷新记录后再打开。")
                 }
                 draft = current
-                submissionStatusID = nil
                 saveStatus = "已恢复本机草稿"
                 pane = .capture
             } catch { self.error = error.localizedDescription }
@@ -426,7 +430,6 @@ final class CaptureModel: ObservableObject {
                 try await store.deleteRecord(record.id)
                 if draft.id == record.id {
                     draft = CaptureRecord()
-                    submissionStatusID = nil
                     captureNotice = nil
                     saveStatus = "本机草稿已删除"
                 }
@@ -436,8 +439,35 @@ final class CaptureModel: ObservableObject {
         }
     }
 
-    func openConnectionSettings(target: ConnectionTarget? = nil) {
-        editConnection?(target ?? connection)
+    func openConnectionSettings() {
+        editConnection?(connection, nil)
+    }
+
+    var submittedRecord: CaptureRecord? {
+        records.first { $0.id == submissionStatusID }
+    }
+
+    func showRecord(_ record: CaptureRecord) {
+        selectedRecordID = record.id
+        pane = .queue
+        showMain?()
+    }
+
+    func updatePassword(_ password: String, for record: CaptureRecord) async throws {
+        guard !password.isEmpty,
+              let current = try await store.record(record.id),
+              let target = current.target, current.state != .draft, current.state != .confirmed
+        else { throw PeerError.invalid("这条记录已变更，请关闭后重新查看。") }
+        try credentials.save(password, for: target.id)
+        try await store.retry(current.id)
+        try await refresh()
+        perform { [self] in await sendPending(force: true) }
+    }
+
+    func updateWebAddress(_ address: String, for record: CaptureRecord) async throws -> CaptureRecord {
+        let updated = try await store.updateWebAddress(record.id, address: address)
+        try await refresh()
+        return updated
     }
 
     func continueInMain() {
@@ -501,7 +531,7 @@ final class CaptureModel: ObservableObject {
 
     func resultURL(for record: CaptureRecord) -> URL? {
         guard let result = record.result, result.availability == .available, let target = record.target else { return nil }
-        let base = connection?.peerID == target.peerID ? connection?.webURL : target.webURL
+        let base = target.webURL ?? (connection?.peerID == target.peerID ? connection?.webURL : nil)
         guard var url = base else { return nil }
         for part in ["info-base", "list", "blocks", String(result.rootBlockID), "content"] {
             url.appendPathComponent(part)

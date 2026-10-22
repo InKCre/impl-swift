@@ -2,6 +2,7 @@ import AppKit
 import Capture
 import PeerCore
 import Testing
+import Security
 @testable import CaptureMac
 
 @Suite(.serialized) @MainActor
@@ -12,7 +13,7 @@ struct CaptureInteractionTests {
         let model = try CaptureModel(directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
         defer { model.cancelWork() }
         var mainOpened = false
-        model.editConnection = { _ in mainOpened = true }
+        model.editConnection = { _, _ in mainOpened = true }
         model.submit()
         #expect(!model.hasContent)
         #expect(!model.submitting)
@@ -71,23 +72,131 @@ struct CaptureInteractionTests {
         #expect(model.draft.id == currentID)
     }
 
-    @Test func missingConnectionUsesHostSettingsWithoutReplacingTheDraft() async throws {
+    @Test(arguments: [false, true])
+    func missingConnectionReturnsToTheOriginalDraftWithoutSubmitting(saved: Bool) async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
         defer { model.cancelWork() }
-        model.pane = .queue
-        await model.receive(CapturePayload(materials: [Material(text: "回到主窗口采集")]))
-        #expect(model.pane == .capture)
+        await model.receive(CapturePayload(materials: [Material(text: "连接后继续收入的原文")], annotation: "原附注"))
+        let original = model.draft
         model.editorOwner = .quick
-        var mainOpened = false
-        model.editConnection = { _ in mainOpened = true }
+        var completion: (@MainActor () -> Void)?
+        model.editConnection = { target, callback in
+            #expect(target == nil)
+            completion = callback
+            model.editorOwner = .main
+        }
+        var returnedTo: CaptureModel.EditorOwner?
+        model.presentEditor = { returnedTo = model.editorOwner }
         model.submit()
-        #expect(mainOpened)
-        #expect(model.editorOwner == .quick)
-        #expect(model.pane == .capture)
-        #expect(model.hasContent)
-        #expect(model.lastContactAt == nil)
+        #expect(returnedTo == nil)
+        if saved { model.connection = ConnectionTarget(host: "fixture.test", database: "inkcre", username: "test") }
+        let finish = try #require(completion)
+        finish()
+        #expect(returnedTo == .quick)
+        #expect(model.draft.id == original.id)
+        #expect(try CaptureJSON.encode(model.draft.payload) == CaptureJSON.encode(original.payload))
+        #expect(model.draft.state == .draft && !model.submitting)
+        #expect(try await model.store.record(original.id)?.state == .draft)
+        #expect(model.submittedRecord == nil)
+        returnedTo = nil
+        model.draft = CaptureRecord()
+        completion?()
+        #expect(returnedTo == nil)
+    }
+
+    @Test func passwordRepairRetriesTheFrozenTargetWhileKeepingTheActiveConnection() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let identity = "dev.inkcre.password.\(UUID().uuidString)"
+        defer {
+            SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                           kSecAttrService as String: "\(identity).connections"] as CFDictionary)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let transport = JourneyTransport()
+        let model = try CaptureModel(directory: directory, identity: identity, client: transport)
+        defer { model.cancelWork() }
+        let originalTarget = ConnectionTarget(host: "original.test", database: "original", username: "test")
+        let active = ConnectionTarget(host: "active.test", database: "active", username: "test")
+        model.connection = active
+        try await model.connections.save(active)
+        let draft = CaptureRecord(payload: CapturePayload(materials: [Material(text: "原提交材料")]))
+        _ = try await model.store.freeze(draft, target: originalTarget)
+        let cancelled = try await model.store.cancel(draft.id)
+        // Merely opening and cancelling the editor must leave cancelled work dormant.
+        await model.sendPending(force: true)
+        #expect(await transport.calls.isEmpty)
+        try await model.updatePassword("new-fixture-password", for: cancelled)
+        for _ in 0..<100 where model.records.first?.state != .confirmed { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(model.connection == active)
+        #expect(try await model.connections.load() == active)
+        let calls = await transport.calls
+        #expect(calls.map(\.kind) == ["recover", "submit"])
+        for call in calls {
+            #expect(call.record.id == draft.id && call.record.target == originalTarget && call.secret == "new-fixture-password")
+            #expect(try CaptureJSON.encode(call.record.payload) == CaptureJSON.encode(draft.payload))
+        }
+        #expect(model.records.first?.state == .confirmed)
+    }
+
+    @Test func submittedFeedbackRemainsFindableWhileWritingTheNextDraft() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let identity = "dev.inkcre.feedback.\(UUID().uuidString)"
+        defer {
+            SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                           kSecAttrService as String: "\(identity).connections"] as CFDictionary)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let model = try CaptureModel(directory: directory, identity: identity, client: JourneyTransport())
+        defer { model.cancelWork() }
+        let target = ConnectionTarget(host: "fixture.test", database: "inkcre", username: "test")
+        model.connection = target
+        try model.credentials.save("fixture", for: target.id)
+        model.thought = "第一条想法"
+        let submittedID = model.draft.id
+        model.submit()
+        for _ in 0..<100 where model.submittedRecord?.state != .confirmed { try await Task.sleep(for: .milliseconds(10)) }
+        let record = try #require(model.submittedRecord)
+        #expect(record.id == submittedID && record.state == .confirmed)
+        model.thought = "下一条尚未收入的想法"
+        let nextID = model.draft.id
+        try await model.flush()
+        #expect(model.saveStatus == "草稿已保留在本机")
+        #expect(model.submittedRecord?.id == submittedID)
+        var mainOpened = false
+        model.showMain = { mainOpened = true }
+        model.showRecord(record)
+        #expect(mainOpened && model.pane == .queue && model.selectedRecordID == submittedID)
+        #expect(model.draft.id == nextID && model.thought == "下一条尚未收入的想法")
+    }
+
+    @Test func historicalWebAddressUpdatesOnlyThatRecordsDisplayMetadata() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = try CaptureModel(directory: directory, identity: "dev.inkcre.web.\(UUID().uuidString)")
+        defer { model.cancelWork() }
+        let original = ConnectionTarget(host: "original.test", database: "original", username: "test")
+        let active = ConnectionTarget(host: "active.test", database: "active", username: "test")
+        model.connection = active
+        try await model.connections.save(active)
+        let draft = CaptureRecord(payload: CapturePayload(materials: [Material(text: "历史记录")]))
+        _ = try await model.store.freeze(draft, target: original)
+        let receipt = CaptureResult(submissionID: draft.id, rootBlockID: 42, committedAt: Date(), availability: .available)
+        try await model.store.confirm(draft.id, result: receipt)
+        let confirmed = try #require(try await model.store.record(draft.id))
+        let updated = try await model.updateWebAddress("https://original-web.test", for: confirmed)
+        var expected = original
+        expected.webURL = URL(string: "https://original-web.test")
+        #expect(updated.target == expected && updated.id == confirmed.id && updated.result == receipt)
+        #expect(updated.payload == nil && updated.updatedAt == confirmed.updatedAt)
+        #expect(model.connection == active)
+        #expect(try await model.connections.load() == active)
+        #expect(model.resultURL(for: updated)?.host == "original-web.test")
+        model.connection = original
+        #expect(model.resultURL(for: updated)?.host == "original-web.test")
+        await #expect(throws: PeerError.self) { _ = try await model.updateWebAddress("javascript:alert(1)", for: confirmed) }
+        #expect(try await model.store.record(draft.id)?.target == expected)
     }
 
     @Test func configuringWebAddressMakesExistingResultsOpenableWithoutRetargetingThem() throws {
@@ -219,5 +328,22 @@ struct CaptureInteractionTests {
         #expect(try await model.store.record(currentID)?.payload?.materials.first?.text == "当前尚未等到自动保存的内容")
         #expect(try await model.store.record(other.id) == nil)
         #expect(model.error == nil)
+    }
+}
+
+private actor JourneyTransport: CaptureTransport {
+    struct Call: Sendable {
+        let kind: String
+        let record: CaptureRecord
+        let secret: String
+    }
+    private(set) var calls: [Call] = []
+    func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? {
+        calls.append(Call(kind: "recover", record: record, secret: secret))
+        return nil
+    }
+    func submit(_ record: CaptureRecord, secret: String) async throws -> CaptureResult {
+        calls.append(Call(kind: "submit", record: record, secret: secret))
+        return CaptureResult(submissionID: record.id, rootBlockID: 42, committedAt: Date(), availability: .available)
     }
 }

@@ -93,7 +93,7 @@ struct QuickCaptureView: View {
             Divider()
             if model.editorOwner == .quick { CaptureEditor(model: model, isQuickCapture: true) }
         }
-        .frame(minWidth: 500, minHeight: 400)
+        .frame(minWidth: 500, minHeight: 500)
         .modifier(CaptureAlerts(model: model, owner: .quick))
     }
 }

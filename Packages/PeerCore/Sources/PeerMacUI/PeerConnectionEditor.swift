@@ -7,6 +7,7 @@ public struct PeerConnectionEditor: View {
     private let onSaved: @MainActor (ConnectionTarget) -> Void
     private let onCancel: @MainActor () -> Void
     private let target: ConnectionTarget?
+    private let saveTitle: String
     @Environment(\.dismiss) private var dismiss
     @State private var server: String
     @State private var port: String
@@ -21,12 +22,14 @@ public struct PeerConnectionEditor: View {
 
     public init(
         settings: ConnectionSettings, credentials: CredentialStore, target: ConnectionTarget?,
+        saveTitle: String = "保存",
         onCancel: @escaping @MainActor () -> Void = {},
         onSaved: @escaping @MainActor (ConnectionTarget) -> Void
     ) {
         self.settings = settings
         self.credentials = credentials
         self.target = target
+        self.saveTitle = saveTitle
         self.onCancel = onCancel
         self.onSaved = onSaved
         _server = State(initialValue: target?.host ?? "")
@@ -61,7 +64,7 @@ public struct PeerConnectionEditor: View {
                     dismiss()
                     onCancel()
                 }.keyboardShortcut(.cancelAction).disabled(saving)
-                Button(saving ? "正在保存…" : "保存") {
+                Button(saving ? "正在保存…" : saveTitle) {
                     saving = true
                     issue = nil
                     Task {

@@ -22,7 +22,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         super.init()
     }
     public var showPreferences: (() -> Void)?
-    public var editConnection: ((ConnectionTarget?) -> Void)?
+    public var editConnection: ((ConnectionTarget?, (@MainActor () -> Void)?) -> Void)?
 
     public func makeSettingsViewController() -> NSViewController? {
         model.map { NSHostingController(rootView: CaptureSettingsView(model: $0)) }
@@ -93,7 +93,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
                 backing: .buffered, defer: false
             )
             panel.title = "随手收入 InKCre"
-            panel.minSize = NSSize(width: 500, height: 450)
+            panel.contentMinSize = NSSize(width: 500, height: 500)
             panel.level = .floating
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.isReleasedWhenClosed = false
@@ -106,7 +106,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
             model.dismissQuickCapture = { [weak self] in self?.hide() }
             model.showMain = { [weak self] in self?.showMain() }
             model.showQuick = { [weak self] in self?.showQuick() }
-            model.editConnection = { [weak self] target in self?.editConnection?(target) }
+            model.editConnection = { [weak self] target, completion in self?.editConnection?(target, completion) }
             model.takeScreenshot = { [weak self] in self?.screenshot() }
             model.shortcuts.isCaptureWindow = { [weak panel, weak mainWindow] window in
                 window === panel || window === mainWindow
