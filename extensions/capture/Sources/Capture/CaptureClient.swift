@@ -32,16 +32,6 @@ public struct CaptureClient: CaptureTransport {
     private let database: PeerDatabase
     public init(database: PeerDatabase = .shared) { self.database = database }
 
-    public func checkConnection(_ target: ConnectionTarget, secret: String) async throws {
-        do {
-            _ = try await database.register(target, password: secret)
-            try await database.join(target, password: secret, extension: Self.descriptor)
-            let client = try await database.client(for: target, password: secret)
-            _ = try await client.query(
-                "SELECT submission_id,payload_digest,graph_digest FROM inkcre.capture_receipts LIMIT 0")
-        } catch { throw PeerDatabase.failure(error, dispatched: false) }
-    }
-
     public func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? {
         guard let target = record.target, let payload = record.payload else {
             throw PeerError.invalid("待办缺少材料或目标。")
@@ -78,6 +68,8 @@ public struct CaptureClient: CaptureTransport {
             String(format: "%02x", $0)
         }.joined()
         do {
+            _ = try await database.register(target, password: secret)
+            try await database.join(target, password: secret, extension: Self.descriptor)
             let client = try await database.client(for: target, password: secret)
             let result = try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 try await PeerDatabase.requireSelection(

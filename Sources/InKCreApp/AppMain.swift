@@ -1,5 +1,6 @@
 import AppKit
 import CaptureMac
+import LocalFilesMac
 import PeerCore
 import PeerMacUI
 import SwiftUI
@@ -19,7 +20,23 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     let context: PeerHostContext
     let runtime: BundledExtensionRuntime
     let capture: CaptureExtension
-    private var module: any NativeExtension { runtime.module }
+    let localFiles: LocalFilesExtension
+    let filesRuntime: BundledExtensionRuntime
+    enum Page: Hashable {
+        case capture, records, files, peer
+        var title: String {
+            switch self { case .capture: "采集"; case .records: "记录"; case .files: "本地文件"; case .peer: "Peer 与连接" }
+        }
+    }
+    @Published var columnVisibility = NavigationSplitViewVisibility.all
+    @Published var page = Page.capture {
+        didSet {
+            capture.showingCapturePage = page == .capture || page == .records
+            if page == .capture { capture.selectPage(.capture) }
+            if page == .records { capture.selectPage(.queue) }
+        }
+    }
+    private(set) var mainWindow: PeerMainWindow?
     override convenience init() {
         let identity = Bundle.main.bundleIdentifier ?? "dev.inkcre.capture"
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -31,7 +48,15 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         self.context = context
         capture = CaptureExtension(context: context)
         runtime = BundledExtensionRuntime(module: capture, defaults: defaults)
+        localFiles = LocalFilesExtension(context: context)
+        filesRuntime = BundledExtensionRuntime(module: localFiles, defaults: defaults)
         super.init()
+        capture.presentMain = { [weak self] in self?.showMain() }
+        capture.navigate = { [weak self] page in
+            self?.page = page == .capture ? .capture : .records
+        }
+        localFiles.present = { [weak self] in self?.page = .files; self?.showMain() }
+        localFiles.model.editConnection = { [weak self] in self?.editConnection(self?.connection) }
         capture.showPreferences = { [weak self] in self?.showSettings(.capture) }
         capture.editConnection = { [weak self] target, completion in self?.editConnection(target, onFinished: completion) }
     }
@@ -48,13 +73,18 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
             NSApp.applicationIconImage = icon
         }
         installHostMenu()
+        makeMainWindow()
         do {
             try runtime.startIfEnabled()
+            capture.selectPage(page == .records ? .queue : .capture)
         } catch { show(error) }
+        do { try filesRuntime.startIfEnabled() } catch { show(error) }
+        showMain()
         presence = Task {
             while !Task.isCancelled {
                 do {
-                    if let target = try await context.connections.load() {
+                    connection = try await context.connections.load()
+                    if let target = connection {
                         _ = try await PeerDatabase.shared.register(
                             target, password: context.credentials.read(for: target.id))
                     }
@@ -64,7 +94,19 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
                 do { try await Task.sleep(for: .seconds(30)) } catch { break }
             }
         }
-        if !runtime.running { showExtensions(nil) }
+    }
+
+    func makeMainWindow() {
+        guard mainWindow == nil else { return }
+        mainWindow = PeerMainWindow(host: self)
+        capture.mainWindow = mainWindow
+    }
+
+    @objc func showMain() {
+        makeMainWindow()
+        if mainWindow?.isMiniaturized == true { mainWindow?.deminiaturize(nil) }
+        NSApp.activate(ignoringOtherApps: true)
+        mainWindow?.makeKeyAndOrderFront(nil)
     }
 
     func installHostMenu() {
@@ -114,6 +156,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         view.addItem(withTitle: "进入全屏", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
             .keyEquivalentModifierMask = [.command, .control]
         let window = addMenu("窗口")
+        window.addItem(withTitle: "显示主窗口", action: #selector(showMain), keyEquivalent: "0").target = self
         window.addItem(
             withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
@@ -150,11 +193,13 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         }
     }
 
-    func changeEnabled(_ enable: Bool) {
+    func changeEnabled(_ enable: Bool, files: Bool = false) {
+        let runtime = files ? filesRuntime : runtime
         guard !runtime.applying else { return }
         Task {
             objectWillChange.send()
             do { try await runtime.setEnabled(enable) } catch { show(error) }
+            capture.selectPage(page == .records ? .queue : .capture)
             manager?.refreshCaptureSettings(host: self)
             updateStatus()
         }
@@ -179,6 +224,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
                 self?.connection = target
                 self?.connectionIssue = nil
                 self?.capture.connectionDidChange(target)
+                Task { await self?.localFiles.model.refresh() }
                 close()
             }))
         sheet.contentView = content
@@ -205,7 +251,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if runtime.running { module.showMain() } else { showExtensions(nil) }
+        showMain()
         return false
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -215,6 +261,8 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
             do {
                 await runtime.waitUntilIdle()
                 try await runtime.stop()
+                await filesRuntime.waitUntilIdle()
+                try await filesRuntime.stop()
                 await presence?.value
                 await PeerDatabase.shared.shutdown()
                 sender.reply(toApplicationShouldTerminate: true)

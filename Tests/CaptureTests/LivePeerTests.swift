@@ -14,7 +14,6 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
   let password = try #require(env["INKCRE_CAPTURE_TEST_PASSWORD"])
   let database = PeerDatabase()
   let client = CaptureClient(database: database)
-  try await client.checkConnection(target, secret: password)
   let pg = try await database.client(for: target, password: password)
   struct Fixture: Decodable { let payload: CapturePayload }
   let fixtureURL = try #require(
@@ -100,12 +99,12 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     Issue.record("停用后不得继续共享写入")
   } catch PeerError.needsAction(let message) { #expect(message.contains("停用")) }
   await #expect(throws: PeerError.self) {
-    try await client.checkConnection(target, secret: password)
+    _ = try await client.submit(record, secret: password)
   }
   try await pg.query(
     "DELETE FROM inkcre.extension_peer_participations WHERE peer_id=\(target.peerID)")
   await #expect(throws: PeerError.self) {
-    try await client.checkConnection(target, secret: password)
+    _ = try await client.submit(record, secret: password)
   }
   let removed = try await pg.query(
     "SELECT count(*) FROM inkcre.extension_peer_participations WHERE peer_id=\(target.peerID)"
@@ -114,16 +113,18 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
   // An explicit enable is allowed to create a first participation before Capture starts.
   try await database.setEnabled(
     true, target: target, password: password, extension: CaptureClient.descriptor)
-  try await client.checkConnection(target, secret: password)
+  _ = try await client.submit(record, secret: password)
   let first = ConnectionTarget(
     host: target.host, port: target.port, database: target.database, username: target.username,
     tls: target.tls)
   try await database.setEnabled(
     true, target: first, password: password, extension: CaptureClient.descriptor)
+  var firstRecord = CaptureRecord(payload: CapturePayload(materials: [Material(text: "首次准入")]))
+  firstRecord.target = first
   try await pg.query(
     "DELETE FROM inkcre.extension_peer_participations WHERE peer_id=\(first.peerID)")
   await #expect(throws: PeerError.self) {
-    try await client.checkConnection(first, secret: password)
+    _ = try await client.submit(firstRecord, secret: password)
   }
   let removedBeforeFirstJoin = try await pg.query(
     "SELECT count(*) FROM inkcre.extension_peer_participations WHERE peer_id=\(first.peerID)"
@@ -131,6 +132,6 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
   #expect(removedBeforeFirstJoin == 0)
   try await database.setEnabled(
     true, target: first, password: password, extension: CaptureClient.descriptor)
-  try await client.checkConnection(first, secret: password)
+  _ = try await client.submit(firstRecord, secret: password)
   await database.shutdown()
 }

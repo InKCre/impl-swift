@@ -30,11 +30,20 @@ public final class BundledExtensionRuntime {
             idleWaiters.removeAll()
         }
         syncIssue = nil
-        do { try await module.setEnabled(enabled) } catch PeerError.connection(let message) {
-            syncIssue = message
+        if !enabled {
+            defaults.set(false, forKey: key)
+            try await stop()
         }
-        defaults.set(enabled, forKey: key)
-        if enabled { try startIfEnabled() } else { try await stop() }
+        do { try await module.setEnabled(enabled) } catch {
+            if enabled {
+                guard case PeerError.connection = error else { throw error }
+            }
+            syncIssue = "共享状态未同步：\(error.localizedDescription)"
+        }
+        if enabled {
+            defaults.set(true, forKey: key)
+            try startIfEnabled()
+        }
     }
     public func waitUntilIdle() async {
         if applying { await withCheckedContinuation { idleWaiters.append($0) } }

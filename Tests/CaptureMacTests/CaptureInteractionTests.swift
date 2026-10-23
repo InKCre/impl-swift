@@ -50,13 +50,13 @@ struct CaptureInteractionTests {
         defer { model.cancelWork() }
         model.thought = "主窗口中未提交的草稿"
         let previousID = model.draft.id
-        model.pane = .peer
+        model.pane = .queue
         model.editorOwner = .quick
         var presented: CaptureModel.EditorOwner?
         model.presentEditor = { presented = model.editorOwner }
         let payload = CapturePayload(entry: .selection, materials: [Material(text: "快捷采集的新材料")])
         await model.receive(payload)
-        #expect(model.pane == .peer)
+        #expect(model.pane == .queue)
         #expect(presented == .quick)
         #expect(model.draft.id == payload.submissionID)
         #expect(try await model.store.record(previousID)?.payload?.materials.first?.text == "主窗口中未提交的草稿")

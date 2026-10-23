@@ -59,26 +59,30 @@ final class PeerSettingsWindow: NSWindow, NSWindowDelegate {
     }
 }
 
-private struct ConnectionSettingsView: View {
+struct ConnectionSettingsView: View {
     @ObservedObject var host: PeerHost
     var body: some View {
-        Form {
-            Section("共享信息库") {
-                if let target = host.connection {
-                    LabeledContent("信息库", value: target.name)
-                    LabeledContent("PostgreSQL", value: "\(target.host):\(target.port)/\(target.database)")
-                    LabeledContent("运行角色", value: target.username)
-                    if let web = target.webURL { LabeledContent("Web 地址", value: web.absoluteString) }
-                } else {
-                    Text("连接信息库后可以收入。未连接时仍可采集、保留草稿和导出材料。")
-                        .foregroundStyle(.secondary)
-                }
-                Button(host.connection == nil ? "连接信息库…" : "编辑连接…") { host.editConnection(host.connection) }
-                if let issue = host.connectionIssue { Text(issue).foregroundStyle(.red).textSelection(.enabled) }
+        Group {
+            if let target = host.connection {
+                Form {
+                    Section("共享信息库") {
+                        LabeledContent("信息库", value: target.name)
+                        LabeledContent("PostgreSQL", value: "\(target.host):\(target.port)/\(target.database)")
+                        LabeledContent("运行角色", value: target.username)
+                        LabeledContent("Peer", value: target.peerID.uuidString.lowercased()).textSelection(.enabled)
+                        if let web = target.webURL { LabeledContent("Web 地址", value: web.absoluteString) }
+                        Button("编辑连接…") { host.editConnection(target) }
+                        if let issue = host.connectionIssue { Text(issue).foregroundStyle(.red).textSelection(.enabled) }
+                    }
+                }.formStyle(.grouped)
+            } else {
+                ContentUnavailableView {
+                    Label("未连接信息库", systemImage: "network")
+                } actions: {
+                    Button("连接信息库…") { host.editConnection(nil) }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            Text("连接由此 Mac 的各扩展共享；密码保存在系统钥匙串中。")
-                .font(.caption).foregroundStyle(.secondary)
-        }.formStyle(.grouped)
+        }
     }
 }
 
@@ -95,6 +99,13 @@ private struct ExtensionSettingsView: View {
                 LabeledContent("版本", value: host.capture.descriptor.version)
                 Text("随应用交付，提供选区、粘贴、截图与想法采集。")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("本地文件") {
+                Toggle("在此 Mac 启用", isOn: Binding(get: { host.filesRuntime.enabled }, set: { host.changeEnabled($0, files: true) }))
+                    .disabled(host.filesRuntime.applying)
+                Text(host.filesRuntime.applying ? "正在应用…" : host.filesRuntime.syncIssue ?? (host.filesRuntime.running ? "本机运行中" : "已停用"))
+                    .foregroundStyle(.secondary)
+                LabeledContent("版本", value: host.localFiles.descriptor.version)
             }
         }.formStyle(.grouped)
     }

@@ -71,7 +71,15 @@ public actor CaptureStore {
     }
 
     public func records() throws -> [CaptureRecord] {
-        try database.statement("SELECT body FROM records") { statement in
+        try records(query: "SELECT body FROM records")
+    }
+
+    public func pendingRecords() throws -> [CaptureRecord] {
+        try records(query: "SELECT body FROM records WHERE json_extract(CAST(body AS TEXT), '$.state') IN ('pending','unknown')")
+    }
+
+    private func records(query: String) throws -> [CaptureRecord] {
+        try database.statement(query) { statement in
             var records: [CaptureRecord] = []
             while true {
                 let result = sqlite3_step(statement)

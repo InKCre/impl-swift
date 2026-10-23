@@ -23,16 +23,18 @@ public actor CaptureQueue {
         if running { await withCheckedContinuation { idleWaiters.append($0) } }
     }
 
-    public func process(force: Bool = false) async throws {
-        guard !isStopped, !Task.isCancelled, !running else { return }
+    @discardableResult
+    public func process(force: Bool = false) async throws -> Bool {
+        guard !isStopped, !Task.isCancelled, !running else { return false }
         running = true
+        var changed = false
         defer {
             running = false
             for waiter in idleWaiters { waiter.resume() }
             idleWaiters.removeAll()
         }
-        for item in try await store.records() where [.pending, .unknown].contains(item.state) {
-            guard !isStopped, !Task.isCancelled else { return }
+        for item in try await store.pendingRecords() {
+            guard !isStopped, !Task.isCancelled else { return changed }
             let delay = min(300.0, pow(2.0, Double(min(item.attempts, 8))) * 2)
             if !force && item.attempts > 0 && Date().timeIntervalSince(item.updatedAt) < delay { continue }
             guard let target = item.target else { continue }
@@ -40,11 +42,13 @@ public actor CaptureQueue {
                 let secret = try credentials.read(for: target.id)
                 if let result = try await client.recover(item, secret: secret) {
                     try await store.confirm(item.id, result: result)
+                    changed = true
                     continue
                 }
-                guard !isStopped, !Task.isCancelled else { return }
+                guard !isStopped, !Task.isCancelled else { return changed }
                 let dispatched = try await store.markDispatch(item.id)
-                guard !isStopped, !Task.isCancelled else { return }
+                changed = true
+                guard !isStopped, !Task.isCancelled else { return changed }
                 let result = try await client.submit(dispatched, secret: secret)
                 try await store.confirm(item.id, result: result)
             } catch let error as PeerError {
@@ -56,12 +60,15 @@ public actor CaptureQueue {
                 case .storage: throw error
                 }
                 try await store.report(item.id, state: state, message: error.localizedDescription)
+                changed = true
             } catch {
                 try await store.report(
                     item.id, state: .unknown,
                     message: "无法确认响应，原提交已保留。请检查服务版本后重试。"
                 )
+                changed = true
             }
         }
+        return changed
     }
 }

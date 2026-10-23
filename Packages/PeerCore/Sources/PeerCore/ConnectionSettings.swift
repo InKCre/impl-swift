@@ -32,7 +32,7 @@ public actor ConnectionSettings {
             name: host)
         try target.validate()
         if !password.isEmpty { try credentials.save(password, for: target.id) }
-        _ = try credentials.read(for: target.id)
+        _ = try credentials.read(for: target.id, allowInteraction: true)
         try save(target)
         return target
     }
