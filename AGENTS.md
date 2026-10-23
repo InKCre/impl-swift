@@ -6,7 +6,7 @@
 
 本体是 regular Mac 应用，拥有 Dock 图标、普通主窗口和应用菜单。快捷采集 NSPanel 是辅助入口；不得再把应用整体收窄为 accessory/LSUIElement 菜单栏工具。主窗口导航与快捷采集编辑位置分开，草稿和队列只有一个所有者。
 
-`Packages/PeerCore` 拥有通用 PostgreSQL 原生连接、事务、图／Storage、凭据、Host 配置和原生扩展生命周期。`extensions/capture` 是 first-party Swift 分发，拥有材料、系统采集、界面、SQLite 草稿／待办、构图与收入恢复。`Sources/InKCreApp` 只负责应用 Host。跨平台业务合同属于 Capture Extension，数据库 schema／迁移由 impl-py 交付。
+`Packages/PeerCore` 拥有通用 PostgreSQL 原生连接、事务、图／Storage、Source Job、凭据、Host 配置和原生扩展生命周期。`extensions/capture` 拥有材料、系统采集、界面、SQLite 草稿／待办、构图与收入恢复；`extensions/local-files` 拥有目录来源、文件提取、监视、持续对账及界面，原件留在磁盘。`Sources/InKCreApp` 拥有应用 Host、普通主窗口、导航、菜单及设置，不能由某一个扩展控制主窗口生命周期。跨平台业务合同归各 first-party extension，数据库 schema／迁移由 impl-py 交付。
 
 Capture 和此次 Mac 分发尚未发布，直接修订候选 schema，不增加旧 HTTP、旧回执或旧本机格式兼容。保留原开发数据文件，不自动导入或清空。第三方引用必须保留许可证、固定来源、修改说明和署名；打包必须包含完整依赖许可。
 

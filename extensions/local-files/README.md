@@ -1,0 +1,11 @@
+# 本地文件 Swift 分发
+
+`LocalFiles` 拥有位置 URI、提取、Source 配置、对账和图更新；`LocalFilesMac` 拥有书签、FSEvents、监视生命周期及原生界面。Host 静态组合此扩展与 Capture。共享合同位于 InKCre/docs 的 `20-product-tdd/local-files-contract.md`，无需 Python 服务或新数据库迁移。
+
+Source 配置在 info-base，书签及原连接绑定在 Host 的 `extensions/inkcre-local-files/directories.json`，权限 0600。密码仅存系统 Keychain。先监视再扫描；通知合并为待核对状态，不保存事件日志。每 30 秒核对共享配置、待执行 Job 和失败扫描，正常监视不会每 30 秒重新读取所有文件。每轮从原连接的 Keychain 取凭据。停止等待当前文件事务和提取结束，再释放监视与目录访问。
+
+列表与扫描只读取文件元数据和正文 ID；选中文件才读取该文件正文，修订变化后更新当前正文。未变化文件不进入逐文件写事务，完整扫描仍复核来源状态并处理失效文件。
+
+读取端解释 `extensions.local_files.file.v1` 与 `body`，不要注册不能执行的 Source 占位类。重连扫描当前目录，不引入未发布格式兼容、原文件复制或正文 outbox。
+
+验证使用合成目录和一次性 PostgreSQL。`swift test` 包含 URI／六种格式提取；设置 `INKCRE_FILES_TEST_DATABASE`、`INKCRE_FILES_TEST_PORT`、`INKCRE_FILES_TEST_PASSWORD` 后执行真实事务、FSEvents、暂停／恢复、重启、删除保留与隐藏窗口主流程。测试运行角色是 `inkcre_core`，仅允许指定一次性数据库。`INKCRE_LAYOUT_EVIDENCE_DIR` 保存实际 AppKit 窗口的渲染图，不激活窗口。

@@ -70,29 +70,20 @@ struct CaptureLayoutTests {
         }
     }
 
-    @Test func mainWindowSidebarAndPrimarySurfacesRenderOffscreen() async throws {
+    @Test func captureSurfacesRenderOffscreen() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(directory: directory, identity: "dev.inkcre.surfaces.\(UUID().uuidString)")
         defer { model.cancelWork() }
-        let window = PeerMainWindow(model: model)
-        window.setFrameAutosaveName("")
-        window.setFrame(NSRect(x: 0, y: 0, width: 760, height: 520), display: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.contentViewController = NSHostingController(rootView: CapturePageView(model: model))
+        window.setContentSize(NSSize(width: 760, height: 520))
         defer { window.orderOut(nil) }
-        let item = NSMenuItem(title: "侧栏", action: #selector(NSSplitViewController.toggleSidebar(_:)), keyEquivalent: "s")
-        #expect(window.validateUserInterfaceItem(item))
-        #expect(item.title == "隐藏侧栏")
-        #expect(window.tryToPerform(item.action!, with: item))
-        #expect(model.columnVisibility == .detailOnly)
-        #expect(window.validateUserInterfaceItem(item))
-        #expect(item.title == "显示侧栏")
-        try await snapshot(window, named: "main-sidebar-hidden")
-        #expect(window.tryToPerform(item.action!, with: item))
-        #expect(model.columnVisibility == .all)
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             window.appearance = NSAppearance(named: appearance)
-            for pane in [CaptureModel.Pane.capture, .queue, .peer] {
+            for pane in [CaptureModel.Pane.capture, .queue] {
                 model.pane = pane
                 try await snapshot(window, named: "main-\(pane)-\(appearance.rawValue)")
             }

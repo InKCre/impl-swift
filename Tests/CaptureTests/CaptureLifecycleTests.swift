@@ -55,7 +55,7 @@ private actor PausedRecovery: CaptureTransport {
     let stopped = Task { await queue.stop() }
     while !(await queue.isStopped) { await Task.yield() }
     await transport.finishRecovery()
-    try await processing.value
+    _ = try await processing.value
     await stopped.value
     try await queue.process(force: true)
     #expect(await transport.dispatches == 0)

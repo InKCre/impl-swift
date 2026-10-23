@@ -1,53 +1,23 @@
 import SwiftUI
 
-struct PeerMainView: View {
+struct CapturePageView: View {
     @ObservedObject var model: CaptureModel
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $model.columnVisibility) {
-            VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Image(nsImage: colorScheme == .dark ? BrandAssets.darkMark : BrandAssets.lightMark)
-                        .resizable().frame(width: 32, height: 32).accessibilityHidden(true)
-                    VStack(alignment: .leading) {
-                        Text("InKCre").font(.headline)
-                        Text("Mac Peer").font(.caption).foregroundStyle(.secondary)
+        Group {
+            switch model.pane {
+            case .capture:
+                if model.editorOwner == .quick {
+                    ContentUnavailableView {
+                        Label("正在快捷采集", systemImage: "rectangle.on.rectangle")
+                    } actions: {
+                        Button("在主窗口继续") { model.continueInMain() }
                     }
-                    Spacer()
-                }.padding()
-                List(selection: Binding(get: { Optional(model.pane) }, set: {
-                    guard let value = $0 else { return }
-                    model.pane = value
-                })) {
-                    Label("采集", systemImage: "square.and.pencil").tag(CaptureModel.Pane.capture)
-                    Label("记录", systemImage: "tray.full").tag(CaptureModel.Pane.queue)
-                    Label("Peer 与连接", systemImage: "network").tag(CaptureModel.Pane.peer)
-                }.listStyle(.sidebar)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.connection?.name ?? "未连接信息库")
-                    Text("\(model.pendingCount) 项待收入").foregroundStyle(.secondary)
-                }.font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding()
-            }.navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 260)
-        } detail: {
-            Group {
-                switch model.pane {
-                case .capture:
-                    if model.editorOwner == .quick {
-                        ContentUnavailableView {
-                            Label("正在快捷采集", systemImage: "rectangle.on.rectangle")
-                        } description: {
-                            Text("当前草稿正在快捷面板中编辑。")
-                        } actions: {
-                            Button("在主窗口继续") { model.continueInMain() }
-                        }
-                    } else { CaptureEditor(model: model) }
-                case .queue: CaptureRecordsView(model: model)
-                case .peer: ConnectionView(model: model)
-                }
-            }.frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
-                .navigationTitle(title)
-        }
+                } else { CaptureEditor(model: model) }
+            case .queue: CaptureRecordsView(model: model)
+            }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
                 if model.pane == .capture && model.editorOwner == .main {
@@ -68,13 +38,7 @@ struct PeerMainView: View {
         .modifier(CaptureAlerts(model: model, owner: .main))
     }
 
-    private var title: String {
-        switch model.pane {
-        case .capture: "采集"
-        case .queue: "记录"
-        case .peer: "Peer 与连接"
-        }
-    }
+
 }
 
 struct QuickCaptureView: View {

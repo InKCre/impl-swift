@@ -5,6 +5,8 @@ import Combine
 import PeerCore
 import SwiftUI
 
+public enum CapturePage: Hashable { case capture, queue }
+
 @MainActor
 final class CapturePanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -28,7 +30,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         model.map { NSHostingController(rootView: CaptureSettingsView(model: $0)) }
     }
 
-    public func connectionDidChange(_ target: ConnectionTarget) { model?.connectionSaved(target) }
+    public func connectionDidChange(_ target: ConnectionTarget) { model?.connection = target }
 
     public var canOpenSettings: Bool {
         model == nil || (canChangeCaptureContext && model?.submitting != true)
@@ -48,7 +50,16 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
     private var statusItem: NSStatusItem?
     private var shortcutObservation: AnyCancellable?
     private var panel: CapturePanel?
-    private var mainWindow: PeerMainWindow?
+    public weak var mainWindow: NSWindow?
+    public var presentMain: (() -> Void)?
+    public var navigate: ((CapturePage) -> Void)?
+    public var showingCapturePage = true
+
+    public func selectPage(_ page: CapturePage) { model?.pane = page }
+    public func pageView() -> AnyView {
+        if let model { return AnyView(CapturePageView(model: model)) }
+        return AnyView(ContentUnavailableView("采集扩展已停用", systemImage: "viewfinder"))
+    }
     private var model: CaptureModel?
     private let regionCapture = RegionCapture()
     private var selectionTask: Task<Void, Never>?
@@ -76,7 +87,6 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
             try model.shortcuts.start()
             configureMenu()
             model.start(restore: false)
-            showMain()
             return
         }
         do {
@@ -84,9 +94,6 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
                 directory: context.directory.appendingPathComponent("extensions/inkcre-capture"),
                 identity: context.identity, connections: context.connections)
             self.model = model
-            let mainWindow = PeerMainWindow(model: model)
-            mainWindow.delegate = self
-            self.mainWindow = mainWindow
             let panel = CapturePanel(
                 contentRect: NSRect(x: 0, y: 0, width: 570, height: 640),
                 styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
@@ -128,12 +135,10 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
             if let message = model.shortcuts.message { model.captureNotice = message }
             configureMenu()
             model.start()
-            showMain()
         } catch {
             model?.cancelWork()
             model?.shortcuts.stop()
             panel?.orderOut(nil)
-            mainWindow?.orderOut(nil)
             throw error
         }
     }
@@ -188,7 +193,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
     private func canPerform(_ action: ShortcutAction, in window: NSWindow?) -> Bool {
         guard canChangeCaptureContext, let model, model.shortcuts.recording == nil else { return false }
         let quick = window === panel && model.editorOwner == .quick
-        let editor = quick || (window === mainWindow && model.pane == .capture && model.editorOwner == .main)
+        let editor = quick || (showingCapturePage && window === mainWindow && model.pane == .capture && model.editorOwner == .main)
         return model.canPerform(action, isEditor: editor, isQuickPanel: quick)
     }
 
@@ -347,9 +352,8 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         panel?.makeFirstResponder(nil)
         panel?.orderOut(nil)
         model?.editorOwner = .main
-        if mainWindow?.isMiniaturized == true { mainWindow?.deminiaturize(nil) }
-        NSApp.activate(ignoringOtherApps: true)
-        mainWindow?.makeKeyAndOrderFront(nil)
+        if let model { navigate?(model.pane) }
+        presentMain?()
     }
 
     private func showCaptureSurface() {
@@ -379,8 +383,8 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         return true
     }
 
-    public func windowDidBecomeKey(_ notification: Notification) {
-        if notification.object as? NSWindow === mainWindow, panel?.isVisible == true {
+    public func mainWindowBecameKey() {
+        if panel?.isVisible == true {
             panel?.makeFirstResponder(nil)
             panel?.orderOut(nil)
             model?.editorOwner = .main
@@ -413,7 +417,6 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         selectionTask = nil
         await model.stop()
         panel?.orderOut(nil)
-        mainWindow?.orderOut(nil)
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
         statusItem = nil
         if let commandItem { NSApp.mainMenu?.removeItem(commandItem) }
@@ -421,7 +424,6 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         shortcutObservation = nil
         try await model.flush()
         panel = nil
-        mainWindow = nil
         self.model = nil
     }
 }

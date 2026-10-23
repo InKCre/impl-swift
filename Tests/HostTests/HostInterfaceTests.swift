@@ -72,4 +72,40 @@ struct HostInterfaceTests {
         }
         #expect(!window.isVisible)
     }
+    @Test func hostOwnsMainWindowAndSidebarWhenCaptureIsDisabled() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let domain = "dev.inkcre.host-navigation.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain); try? FileManager.default.removeItem(at: directory) }
+        defaults.set(false, forKey: "extensions.inkcre/capture.enabled")
+        defaults.set(false, forKey: "extensions.inkcre/local-files.enabled")
+        let host = PeerHost(context: PeerHostContext(identity: domain, directory: directory), defaults: defaults)
+        let window = PeerMainWindow(host: host)
+        window.setFrameAutosaveName("")
+        defer { window.orderOut(nil) }
+        let item = NSMenuItem(title: "侧栏", action: #selector(NSSplitViewController.toggleSidebar(_:)), keyEquivalent: "s")
+        #expect(window.tryToPerform(item.action!, with: item))
+        #expect(host.columnVisibility == .detailOnly)
+        #expect(window.validateUserInterfaceItem(item) && item.title == "显示侧栏")
+        #expect(window.tryToPerform(item.action!, with: item))
+        #expect(host.columnVisibility == .all)
+        for size in [NSSize(width: 760, height: 520), NSSize(width: 1000, height: 720)] {
+            window.setContentSize(size)
+            for page in [PeerHost.Page.capture, .files, .peer] {
+                host.page = page
+                try await Task.sleep(for: .milliseconds(150))
+                let view = try #require(window.contentView?.superview)
+                view.layoutSubtreeIfNeeded()
+                let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+                #expect(bitmap.pixelsWide >= Int(size.width))
+                if let path = ProcessInfo.processInfo.environment["INKCRE_LAYOUT_EVIDENCE_DIR"] {
+                    try #require(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: path).appendingPathComponent("host-\(page)-\(Int(size.width)).png"))
+                }
+            }
+        }
+        #expect(!window.isVisible && host.page == .peer)
+    }
+
 }

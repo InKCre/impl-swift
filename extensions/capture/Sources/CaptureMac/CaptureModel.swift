@@ -7,7 +7,7 @@ import SwiftUI
 
 @MainActor
 final class CaptureModel: ObservableObject {
-    enum Pane: Hashable { case capture, queue, peer }
+    typealias Pane = CapturePage
     enum EditorOwner { case main, quick }
     enum RemovalRequest {
         case material(draftID: UUID, materialID: UUID)
@@ -42,7 +42,6 @@ final class CaptureModel: ObservableObject {
         }
     }
     @Published var pane = Pane.capture
-    @Published var columnVisibility = NavigationSplitViewVisibility.all
     @Published var editorOwner = EditorOwner.main
     @Published var draft = CaptureRecord()
     @Published var records: [CaptureRecord] = []
@@ -50,9 +49,6 @@ final class CaptureModel: ObservableObject {
     @Published var error: String?
     @Published var saveStatus = "随时写下想法，或加入材料"
     @Published var submitting = false
-    @Published var lastContactAt: Date?
-    @Published var peerConnectionIssue: String?
-    @Published private(set) var checkingConnection = false
     @Published var captureNotice: String?
     @Published var screenCaptureNotice: String?
     @Published var removalRequest: RemovalRequest?
@@ -70,8 +66,6 @@ final class CaptureModel: ObservableObject {
     private let queue: CaptureQueue
     private var saveTask: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
-    private var connectionCheck: Task<Void, Never>?
-    private var connectionRevision = UUID()
     @Published private(set) var submissionStatusID: UUID?
     @Published var selectedRecordID: UUID?
     private var editRevision = 0
@@ -145,26 +139,8 @@ final class CaptureModel: ObservableObject {
                 } catch { self.error = error.localizedDescription }
             }
             submitting = false
-            var cycle = 0
             while !Task.isCancelled {
                 await sendPending()
-                if cycle % 4 == 0, !checkingConnection, let connection {
-                    let revision = connectionRevision
-                    do {
-                        try await CaptureClient().checkConnection(
-                            connection, secret: credentials.read(for: connection.id)
-                        )
-                        if connectionRevision == revision && !checkingConnection {
-                            lastContactAt = Date()
-                            peerConnectionIssue = nil
-                        }
-                    } catch {
-                        if connectionRevision == revision && !checkingConnection {
-                            peerConnectionIssue = error.localizedDescription
-                        }
-                    }
-                }
-                cycle += 1
                 do { try await Task.sleep(for: .seconds(10)) } catch { break }
             }
         }
@@ -175,7 +151,6 @@ final class CaptureModel: ObservableObject {
         selectionRequest = UUID()
         heartbeat?.cancel()
         saveTask?.cancel()
-        connectionCheck?.cancel()
         for task in actions.values { task.cancel() }
     }
 
@@ -184,7 +159,6 @@ final class CaptureModel: ObservableObject {
         await queue.stop()
         for task in Array(actions.values) { await task.value }
         await heartbeat?.value
-        await connectionCheck?.value
         await saveTask?.value
         await queue.stop()
     }
@@ -222,9 +196,9 @@ final class CaptureModel: ObservableObject {
         if !hasContent {
             let id = draft.id
             let revision = editRevision
-            if try await store.record(id) != nil { try await store.discardDraft(id) }
+            try await store.discardDraft(id)
             if draft.id == id, revision == editRevision { saveStatus = "随时写下想法，或加入材料" }
-            try await refresh()
+            try await refreshRecord(id)
             return
         }
         draft.updatedAt = Date()
@@ -236,7 +210,7 @@ final class CaptureModel: ObservableObject {
             throw error
         }
         if draft.id == value.id, revision == editRevision { saveStatus = "草稿已保留在本机" }
-        try await refresh()
+        try await refreshRecord(value.id)
     }
 
     func newThought(notice: String? = nil) {
@@ -340,13 +314,19 @@ final class CaptureModel: ObservableObject {
 
     func sendPending(force: Bool = false) async {
         do {
-            try await queue.process(force: force)
-            try await refresh()
+            if try await queue.process(force: force) { try await refresh() }
         } catch { self.error = error.localizedDescription }
     }
 
     func refresh() async throws {
         records = try await store.records()
+    }
+
+    private func refreshRecord(_ id: UUID) async throws {
+        let record = try await store.record(id)
+        records.removeAll { $0.id == id }
+        if let record { records.append(record) }
+        records.sort { $0.updatedAt > $1.updatedAt }
     }
 
     func resume(_ record: CaptureRecord) {
@@ -365,7 +345,7 @@ final class CaptureModel: ObservableObject {
                 }
                 draft = current
                 saveStatus = "已恢复本机草稿"
-                pane = .capture
+                revealEditor()
             } catch { self.error = error.localizedDescription }
         }
     }
@@ -493,39 +473,6 @@ final class CaptureModel: ObservableObject {
             string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
         {
             NSWorkspace.shared.open(url)
-        }
-    }
-
-    func connectionSaved(_ target: ConnectionTarget) {
-        connection = target
-        connectionRevision = UUID()
-        lastContactAt = nil
-        peerConnectionIssue = nil
-        checkConnection()
-    }
-
-    func checkConnection() {
-        guard let target = connection else { return }
-        do { checkConnection(target, secret: try credentials.read(for: target.id)) } catch {
-            peerConnectionIssue = error.localizedDescription
-        }
-    }
-
-    private func checkConnection(_ target: ConnectionTarget, secret: String) {
-        connectionCheck?.cancel()
-        checkingConnection = true
-        let revision = connectionRevision
-        connectionCheck = Task {
-            defer { if !Task.isCancelled && connectionRevision == revision { checkingConnection = false } }
-            do {
-                try await CaptureClient().checkConnection(target, secret: secret)
-                guard !Task.isCancelled, connectionRevision == revision else { return }
-                lastContactAt = Date()
-                peerConnectionIssue = nil
-            } catch {
-                guard !Task.isCancelled, connectionRevision == revision else { return }
-                peerConnectionIssue = error.localizedDescription
-            }
         }
     }
 

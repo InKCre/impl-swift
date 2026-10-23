@@ -37,14 +37,17 @@ struct CaptureStoreTests {
         try await store.report(draft.id, state: .pending, message: "迟到的错误")
         // No credential exists: an accidental dispatch would change the state to needsAction.
         let credentials = CredentialStore(service: "dev.inkcre.test.\(UUID().uuidString)")
-        try await CaptureQueue(store: store, credentials: credentials).process(force: true)
+        #expect(try await store.pendingRecords().isEmpty)
+        #expect(try await CaptureQueue(store: store, credentials: credentials).process(force: true) == false)
         let retained = try #require(try await store.record(draft.id))
         #expect(retained.state == .cancelled)
         #expect(retained.attempts == 0)
         #expect(retained.target == target)
         #expect(retained.payload?.submissionID == draft.id)
         try await store.retry(draft.id)
+        #expect(try await store.pendingRecords().map(\.id) == [draft.id])
         #expect(try await store.markDispatch(draft.id).id == draft.id)
+        #expect(try await store.pendingRecords().first?.state == .unknown)
     }
 
     @Test func cancellationKeepsUnknownOutcomeButDeletionIgnoresLateCallbacks() async throws {
@@ -168,6 +171,7 @@ struct CaptureStoreTests {
         let recovered = try #require(try await reopened.record(draft.id))
         #expect(recovered.state == .confirmed)
         #expect(recovered.payload == nil)
+        #expect(try await reopened.pendingRecords().isEmpty)
         #expect(recovered.result == result)
         await #expect(throws: PeerError.self) { try await reopened.retry(draft.id) }
     }
