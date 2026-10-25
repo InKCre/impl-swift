@@ -10,4 +10,4 @@ git ls-files --cached --others --exclude-standard -z -- \
     'Packages/**/*.swift' 'extensions/**/*.swift' \
     ':!extensions/capture/Sources/CaptureMac/Vendor/**' \
     | xargs -0 swift format lint --strict
-swift test
+swift test --disable-automatic-resolution
