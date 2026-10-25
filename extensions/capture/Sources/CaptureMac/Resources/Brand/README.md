@@ -1,6 +1,18 @@
 # InKCre Mac 标识资源
 
-来自用户提供的 `InKCre-logo-pack-20261021`。来源与固定仓库版本见同目录 `PROVENANCE.json`；面板与菜单 PNG 保持资产包原字节，应用图标另做 macOS 平台画布适配。
+来自 InKCre UI 交付的 `InKCre-logo-pack-20261021`。当前固定到尚未发布的 [UI PR #67](https://github.com/InKCre/ui/pull/67) 候选提交 `b7fea4612999003e6976ce3649ef97fff4ad55d2`；[完整 ZIP](https://github.com/InKCre/ui/blob/b7fea4612999003e6976ce3649ef97fff4ad55d2/assets/InKCre-logo-pack-20261021.zip) 无需 Vue、npm 或渲染器即可取得原生资源。资产本身的原始来源与固定版本见同目录 `PROVENANCE.json`；面板与菜单 PNG 保持资产包原字节，应用图标另做 macOS 平台画布适配。
+
+从仓库根目录取得并更新这三张资源：
+
+```sh
+curl -fL https://raw.githubusercontent.com/InKCre/ui/b7fea4612999003e6976ce3649ef97fff4ad55d2/assets/InKCre-logo-pack-20261021.zip -o /tmp/InKCre-logo-pack-20261021.zip
+unzip -q -o /tmp/InKCre-logo-pack-20261021.zip -d /tmp
+cp /tmp/InKCre-logo-pack-20261021/png/2x/original-transparent/inkcre-original-transparent-24px@2x.png extensions/capture/Sources/CaptureMac/Resources/Brand/MarkLight.png
+cp /tmp/InKCre-logo-pack-20261021/png/2x/reverse-transparent/inkcre-reverse-transparent-24px@2x.png extensions/capture/Sources/CaptureMac/Resources/Brand/MarkDark.png
+cp /tmp/InKCre-logo-pack-20261021/png/2x/black-transparent/inkcre-black-transparent-20px@2x.png extensions/capture/Sources/CaptureMac/Resources/Brand/MenuTemplate.png
+```
+
+本次 ZIP 的 SHA-256 为 `ec4c2390f785d64db23c73f46c3c7a976cb6269d6724e5fa0a807467be79e25f`，三个 PNG 与此前用户提供的本地包逐字节一致。更新交付版本时先阅读该版本的 Logo 说明，按逻辑尺寸选择几何与像素倍率；不跟随移动分支。
 
 `MarkLight.png` 和 `MarkDark.png` 分别取自原色透明、反白透明的 24 px @2x 版本，用于采集面板并按界面深浅切换。`MenuTemplate.png` 取自纯黑透明的 20 px @2x 版本，由 macOS 作为 template 图像适配菜单栏。
 

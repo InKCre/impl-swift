@@ -78,7 +78,7 @@ PDF 读取文字层；DOCX 读取主文档与表格文字，遗漏脚注、批�
 
 Capture 的精确 manifest 随签名应用交付，格式为 `swift_bundled`。当前不实现动态插件下载／热加载，其他版本需更新应用。扩展版本与应用版本分开，不声称已有 Registry 原生 Swift 下载通道。
 
-应用图标、菜单栏 template 图标和明暗面板标识来自用户提供的 2026-10-21 logo pack。应用 ICNS 在原标志外使用 Mac 专用圆角底板和透明边距，避免通用白底画布满版导致 Dock 尺寸过大。资源选择、原始出处、小尺寸/高 DPI 几何与再生步骤见 `extensions/capture/Sources/CaptureMac/Resources/Brand/README.md`，构建不依赖 Downloads 中的原始目录。
+应用图标、菜单栏 template 图标和明暗面板标识使用 InKCre UI 的 2026-10-21 Logo Pack，当前固定到尚未发布的 UI PR #67 候选提交。完整 ZIP 可直接用于原生应用，无需安装 Web 依赖。应用 ICNS 在原标志外使用 Mac 专用圆角底板和透明边距，避免通用白底画布满版导致 Dock 尺寸过大。取得与固定方式、资源选择、原始出处、小尺寸/高 DPI 几何与再生步骤见 [Mac 标识资源](extensions/capture/Sources/CaptureMac/Resources/Brand/README.md)，构建不依赖 Downloads 中的原始目录。
 
 发布构建显式设置稳定 `BUNDLE_ID` 与 `SIGNING_IDENTITY`；可用 `NOTARY_PROFILE` 指定已配置的 notarytool Keychain profile。脚本不会寻找或创建发布凭据。发布后保持 bundle ID 与签名团队不变，以保留系统权限、Keychain 和待办身份。
 
