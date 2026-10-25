@@ -23,7 +23,8 @@ final class RegionCapture {
 
     init(
         hasPermission: @escaping () -> Bool = CGPreflightScreenCaptureAccess,
-        freezeScreens: @escaping () async throws -> [FrozenScreenFrame] = RegionCapture.freezeScreens,
+        freezeScreens: @escaping () async throws -> [FrozenScreenFrame] = RegionCapture
+            .freezeScreens,
         overlay: RegionSelectionOverlay = RegionSelectionOverlay()
     ) {
         self.hasPermission = hasPermission
@@ -50,20 +51,26 @@ final class RegionCapture {
                 case .cancelled:
                     finish(.success(nil))
                 case .region(let selection):
-                    guard let frame = frames.first(where: { $0.displayID == selection.displayID }) else {
+                    guard let frame = frames.first(where: { $0.displayID == selection.displayID })
+                    else {
                         throw PeerError.invalid("找不到所选画面，请重新截图。")
                     }
                     let data = try await Task.detached(priority: .userInitiated) {
                         try frame.png(in: selection.pointsRect)
                     }.value
                     guard !Task.isCancelled else { return }
-                    try CapturePayload(entry: .screenshot, materials: [Material(image: data, mimeType: "image/png")]).validate()
+                    try CapturePayload(
+                        entry: .screenshot,
+                        materials: [Material(image: data, mimeType: "image/png")]
+                    ).validate()
                     finish(.success(data))
                 }
             } catch {
                 guard !Task.isCancelled else { return }
                 let failure = error as NSError
-                if failure.domain == SCStreamErrorDomain, failure.code == SCStreamError.Code.userDeclined.rawValue {
+                if failure.domain == SCStreamErrorDomain,
+                    failure.code == SCStreamError.Code.userDeclined.rawValue
+                {
                     finish(.failure(ScreenRecordingPermissionError()))
                 } else {
                     finish(.failure(error))
@@ -88,23 +95,35 @@ final class RegionCapture {
     }
 
     private static func freezeScreens() async throws -> [FrozenScreenFrame] {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        let own = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+        let content = try await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true)
+        let own = content.applications.filter {
+            $0.processID == ProcessInfo.processInfo.processIdentifier
+        }
         var frames: [FrozenScreenFrame] = []
         for screen in NSScreen.screens {
             try Task.checkCancellation()
-            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
-                  let display = content.displays.first(where: { $0.displayID == number.uint32Value }) else {
+            guard
+                let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
+                    as? NSNumber,
+                let display = content.displays.first(where: { $0.displayID == number.uint32Value })
+            else {
                 throw PeerError.invalid("屏幕配置已改变，请重新截图。")
             }
-            let filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
+            let filter = SCContentFilter(
+                display: display, excludingApplications: own, exceptingWindows: [])
             let configuration = SCStreamConfiguration()
-            configuration.width = max(1, Int((filter.contentRect.width * CGFloat(filter.pointPixelScale)).rounded()))
-            configuration.height = max(1, Int((filter.contentRect.height * CGFloat(filter.pointPixelScale)).rounded()))
+            configuration.width = max(
+                1, Int((filter.contentRect.width * CGFloat(filter.pointPixelScale)).rounded()))
+            configuration.height = max(
+                1, Int((filter.contentRect.height * CGFloat(filter.pointPixelScale)).rounded()))
             configuration.showsCursor = false
             configuration.captureResolution = .best
-            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
-            frames.append(FrozenScreenFrame(displayID: display.displayID, pointsRect: display.frame, image: image))
+            let image = try await SCScreenshotManager.captureImage(
+                contentFilter: filter, configuration: configuration)
+            frames.append(
+                FrozenScreenFrame(
+                    displayID: display.displayID, pointsRect: display.frame, image: image))
         }
         return frames
     }

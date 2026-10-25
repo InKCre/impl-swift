@@ -10,7 +10,8 @@ import Testing
         let digest: String
     }
     let url = try #require(
-        Bundle.module.url(forResource: "capture-v1", withExtension: "json", subdirectory: "Fixtures"))
+        Bundle.module.url(
+            forResource: "capture-v1", withExtension: "json", subdirectory: "Fixtures"))
     let fixtures = try CaptureJSON.decode([Fixture].self, from: Data(contentsOf: url))
     for fixture in fixtures {
         #expect(try fixture.payload.canonicalDigest() == fixture.digest)
@@ -26,7 +27,8 @@ import Testing
         let digest: String
     }
     let url = try #require(
-        Bundle.module.url(forResource: "capture-v1", withExtension: "json", subdirectory: "Fixtures"))
+        Bundle.module.url(
+            forResource: "capture-v1", withExtension: "json", subdirectory: "Fixtures"))
     let fixture = try CaptureJSON.decode([Fixture].self, from: Data(contentsOf: url))[1]
     let data = try CaptureJSON.encode(CaptureCommit(fixture.payload))
     #expect(data == (try CaptureJSON.encode(CaptureCommit(fixture.payload))))
@@ -45,7 +47,9 @@ import Testing
     #expect(blocks[1]["content"] as? String == fixture.payload.materials[0].text)
     #expect(blocks[4]["content"] as? String == fixture.payload.annotation)
     #expect(
-        relations.map { $0["content"] as? String } == ["material:0", "content", "material:1", "annotation"])
+        relations.map { $0["content"] as? String } == [
+            "material:0", "content", "material:1", "annotation",
+        ])
     #expect(blobs.count == 1 && blobs[0]["block_id"] as? Int == -4)
     #expect(
         Data(base64Encoded: try #require(blobs[0]["data_base64"] as? String))
@@ -55,9 +59,11 @@ import Testing
 @Test func nativeValidationRejectsMismatchedImagesAndCountsUTF8Bytes() throws {
     struct Fixture: Decodable { let payload: CapturePayload }
     let url = try #require(
-        Bundle.module.url(forResource: "capture-v1", withExtension: "json", subdirectory: "Fixtures"))
+        Bundle.module.url(
+            forResource: "capture-v1", withExtension: "json", subdirectory: "Fixtures"))
     let image = try #require(
-        CaptureJSON.decode([Fixture].self, from: Data(contentsOf: url))[1].payload.materials[1].data)
+        CaptureJSON.decode([Fixture].self, from: Data(contentsOf: url))[1].payload.materials[1].data
+    )
     #expect(throws: PeerError.self) {
         try CapturePayload(materials: [Material(image: image, mimeType: "image/jpeg")]).validate()
     }

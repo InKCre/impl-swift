@@ -7,7 +7,8 @@ import Testing
 
 struct CaptureStoreTests {
     @Test func deletedDraftIsAbsentAfterRestartAndLateAutosaveCannotRecreateIt() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("capture.sqlite")
         let store = try CaptureStore(url: url)
@@ -18,7 +19,8 @@ struct CaptureStoreTests {
         await #expect(throws: PeerError.self) {
             _ = try await store.freeze(
                 draft,
-                target: ConnectionTarget(host: "example.test", database: "inkcre", username: "inkcre_core"))
+                target: ConnectionTarget(
+                    host: "example.test", database: "inkcre", username: "inkcre_core"))
         }
         let reopened = try CaptureStore(url: url)
         #expect(try await reopened.record(draft.id) == nil)
@@ -26,10 +28,12 @@ struct CaptureStoreTests {
     }
 
     @Test func cancelledIntentNeverAutomaticallyDispatches() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
-        let target = ConnectionTarget(host: "example.test", database: "inkcre", username: "inkcre_core")
+        let target = ConnectionTarget(
+            host: "example.test", database: "inkcre", username: "inkcre_core")
         let draft = CaptureRecord(payload: CapturePayload(materials: [Material(text: "尚未发送")]))
         _ = try await store.freeze(draft, target: target)
         try await store.cancel(draft.id)
@@ -48,12 +52,15 @@ struct CaptureStoreTests {
     }
 
     @Test func cancellationKeepsUnknownOutcomeButDeletionIgnoresLateCallbacks() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
         let draft = CaptureRecord(payload: CapturePayload(materials: [Material(text: "在途材料")]))
         _ = try await store.freeze(
-            draft, target: ConnectionTarget(host: "example.test", database: "inkcre", username: "inkcre_core")
+            draft,
+            target: ConnectionTarget(
+                host: "example.test", database: "inkcre", username: "inkcre_core")
         )
         _ = try await store.markDispatch(draft.id)
         try await store.cancel(draft.id)
@@ -73,7 +80,8 @@ struct CaptureStoreTests {
     }
 
     @Test func clearingDraftAndContinuingToTypeKeepsTheSameIdentity() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
         var draft = CaptureRecord(payload: CapturePayload(materials: [Material(text: "清空前")]))
@@ -86,7 +94,8 @@ struct CaptureStoreTests {
     }
 
     @Test func failedFreezeRetainsTheSavedDraftAndCannotDispatch() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("capture.sqlite")
         let store = try CaptureStore(url: url)
@@ -106,7 +115,8 @@ struct CaptureStoreTests {
         await #expect(throws: PeerError.self) {
             _ = try await store.freeze(
                 draft,
-                target: ConnectionTarget(host: "example.test", database: "inkcre", username: "inkcre_core"))
+                target: ConnectionTarget(
+                    host: "example.test", database: "inkcre", username: "inkcre_core"))
         }
         let retained = try #require(try await store.record(draft.id))
         #expect(retained.state == .draft)
@@ -115,11 +125,13 @@ struct CaptureStoreTests {
     }
 
     @Test func frozenMaterialSurvivesReopeningAndTargetChanges() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("capture.sqlite")
         let store = try CaptureStore(url: url)
-        let target = ConnectionTarget(host: "one.example", database: "inkcre", username: "inkcre_core")
+        let target = ConnectionTarget(
+            host: "one.example", database: "inkcre", username: "inkcre_core")
         let image = try #require(
             Data(
                 base64Encoded:
@@ -129,7 +141,8 @@ struct CaptureStoreTests {
             payload: CapturePayload(
                 entry: .paste,
                 materials: [
-                    Material(text: "原文\n中文 👩🏽‍💻 e\u{301}"), Material(image: image, mimeType: "image/png"),
+                    Material(text: "原文\n中文 👩🏽‍💻 e\u{301}"),
+                    Material(image: image, mimeType: "image/png"),
                 ],
                 annotation: "自己的想法"
             ))
@@ -146,21 +159,27 @@ struct CaptureStoreTests {
         #expect(recovered.payload?.materials[1].data == image)
         #expect(recovered.payload?.annotation == "自己的想法")
         await #expect(throws: PeerError.self) { try await reopened.saveDraft(draft) }
-        await #expect(throws: PeerError.self) { _ = try await reopened.freeze(draft, target: target) }
+        await #expect(throws: PeerError.self) {
+            _ = try await reopened.freeze(draft, target: target)
+        }
     }
 
     @Test func confirmationAtomicallyRetainsIdentityAndClearsMaterial() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("capture.sqlite")
         let store = try CaptureStore(url: url)
         let draft = CaptureRecord(payload: CapturePayload(materials: [Material(text: "一次意图")]))
         _ = try await store.freeze(
-            draft, target: ConnectionTarget(host: "example.test", database: "inkcre", username: "inkcre_core")
+            draft,
+            target: ConnectionTarget(
+                host: "example.test", database: "inkcre", username: "inkcre_core")
         )
         _ = try await store.markDispatch(draft.id)
         let result = CaptureResult(
-            submissionID: draft.id, rootBlockID: 123, committedAt: Date(timeIntervalSince1970: 1_780_000_000),
+            submissionID: draft.id, rootBlockID: 123,
+            committedAt: Date(timeIntervalSince1970: 1_780_000_000),
             availability: .deleted
         )
         try await store.confirm(draft.id, result: result)
@@ -173,10 +192,12 @@ struct CaptureStoreTests {
     }
 
     @Test func emptyDraftCannotEraseAnAlreadyFrozenIntention() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
-        let target = ConnectionTarget(host: "example.test", database: "inkcre", username: "inkcre_core")
+        let target = ConnectionTarget(
+            host: "example.test", database: "inkcre", username: "inkcre_core")
         await #expect(throws: PeerError.self) {
             _ = try await store.freeze(CaptureRecord(), target: target)
         }

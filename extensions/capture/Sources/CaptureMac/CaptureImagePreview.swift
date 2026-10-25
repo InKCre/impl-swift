@@ -13,8 +13,9 @@ struct CaptureImagePreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Button {
-                do { previewURL = try Self.makePreviewFile(material) }
-                catch { issue = error.localizedDescription }
+                do { previewURL = try Self.makePreviewFile(material) } catch {
+                    issue = error.localizedDescription
+                }
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     Label("查看原图", systemImage: "eye").font(.caption).foregroundStyle(.tint)
@@ -40,11 +41,14 @@ struct CaptureImagePreview: View {
 
     static func makePreviewFile(_ material: Capture.Material) throws -> URL {
         guard let data = material.data, let mime = material.mimeType,
-              let suffix = UTType(mimeType: mime)?.preferredFilenameExtension
+            let suffix = UTType(mimeType: mime)?.preferredFilenameExtension
         else { throw CocoaError(.fileReadCorruptFile) }
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("inkcre-preview-\(UUID().uuidString)").appendingPathExtension(suffix)
-        guard FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600])
+            .appendingPathComponent("inkcre-preview-\(UUID().uuidString)").appendingPathExtension(
+                suffix)
+        guard
+            FileManager.default.createFile(
+                atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600])
         else { throw CocoaError(.fileWriteUnknown) }
         return url
     }

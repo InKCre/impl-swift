@@ -10,7 +10,8 @@ public actor CaptureQueue {
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(
-        store: CaptureStore, credentials: CredentialStore, client: any CaptureTransport = CaptureClient()
+        store: CaptureStore, credentials: CredentialStore,
+        client: any CaptureTransport = CaptureClient()
     ) {
         self.store = store
         self.credentials = credentials
@@ -34,7 +35,9 @@ public actor CaptureQueue {
         for item in try await store.records() where [.pending, .unknown].contains(item.state) {
             guard !isStopped, !Task.isCancelled else { return }
             let delay = min(300.0, pow(2.0, Double(min(item.attempts, 8))) * 2)
-            if !force && item.attempts > 0 && Date().timeIntervalSince(item.updatedAt) < delay { continue }
+            if !force && item.attempts > 0 && Date().timeIntervalSince(item.updatedAt) < delay {
+                continue
+            }
             guard let target = item.target else { continue }
             do {
                 let secret = try credentials.read(for: target.id)

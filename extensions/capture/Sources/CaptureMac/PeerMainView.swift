@@ -8,18 +8,24 @@ struct PeerMainView: View {
         NavigationSplitView(columnVisibility: $model.columnVisibility) {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Image(nsImage: colorScheme == .dark ? BrandAssets.darkMark : BrandAssets.lightMark)
-                        .resizable().frame(width: 32, height: 32).accessibilityHidden(true)
+                    Image(
+                        nsImage: colorScheme == .dark ? BrandAssets.darkMark : BrandAssets.lightMark
+                    )
+                    .resizable().frame(width: 32, height: 32).accessibilityHidden(true)
                     VStack(alignment: .leading) {
                         Text("InKCre").font(.headline)
                         Text("Mac Peer").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                 }.padding()
-                List(selection: Binding(get: { Optional(model.pane) }, set: {
-                    guard let value = $0 else { return }
-                    model.pane = value
-                })) {
+                List(
+                    selection: Binding(
+                        get: { Optional(model.pane) },
+                        set: {
+                            guard let value = $0 else { return }
+                            model.pane = value
+                        })
+                ) {
                     Label("采集", systemImage: "square.and.pencil").tag(CaptureModel.Pane.capture)
                     Label("记录", systemImage: "tray.full").tag(CaptureModel.Pane.queue)
                     Label("Peer 与连接", systemImage: "network").tag(CaptureModel.Pane.peer)
@@ -41,7 +47,9 @@ struct PeerMainView: View {
                         } actions: {
                             Button("在主窗口继续") { model.continueInMain() }
                         }
-                    } else { CaptureEditor(model: model) }
+                    } else {
+                        CaptureEditor(model: model)
+                    }
                 case .queue: CaptureRecordsView(model: model)
                 case .peer: ConnectionView(model: model)
                 }
@@ -61,8 +69,10 @@ struct PeerMainView: View {
                         .help("框选截图")
                         .disabled(model.submitting)
                 }
-                Button("快捷采集", systemImage: "rectangle.and.pencil.and.ellipsis") { model.showQuick?() }
-                    .help("打开快捷采集面板")
+                Button("快捷采集", systemImage: "rectangle.and.pencil.and.ellipsis") {
+                    model.showQuick?()
+                }
+                .help("打开快捷采集面板")
             }
         }
         .modifier(CaptureAlerts(model: model, owner: .main))
@@ -127,15 +137,18 @@ private struct CaptureAlerts: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        content.alert(presentedAlert?.title ?? "需要处理", isPresented: Binding(
-            get: { presentedAlert != nil && model.editorOwner == owner },
-            set: {
-                if !$0 && model.editorOwner == owner {
-                    model.error = nil
-                    model.removalRequest = nil
+        content.alert(
+            presentedAlert?.title ?? "需要处理",
+            isPresented: Binding(
+                get: { presentedAlert != nil && model.editorOwner == owner },
+                set: {
+                    if !$0 && model.editorOwner == owner {
+                        model.error = nil
+                        model.removalRequest = nil
+                    }
                 }
-            }
-        ), presenting: presentedAlert) { alert in
+            ), presenting: presentedAlert
+        ) { alert in
             switch alert {
             case .error:
                 Button("知道了", role: .cancel) { model.error = nil }
@@ -143,6 +156,8 @@ private struct CaptureAlerts: ViewModifier {
                 Button(request.actionTitle, role: .destructive) { model.confirmRemoval(request) }
                 Button("取消", role: .cancel) { model.removalRequest = nil }
             }
-        } message: { alert in Text(alert.message) }
+        } message: { alert in
+            Text(alert.message)
+        }
     }
 }

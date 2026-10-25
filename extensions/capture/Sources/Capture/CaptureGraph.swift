@@ -2,6 +2,8 @@ import Foundation
 import PeerCore
 
 /// Capture owns this graph; the Host supplies transaction and storage mechanics.
+// Capture 的序列化字段遵循跨端图协议。
+// swift-format-ignore: AlwaysUseLowerCamelCase
 struct CaptureCommit: Encodable, Sendable {
     struct Blob: Encodable, Sendable {
         let block_id: Int
@@ -37,7 +39,9 @@ struct CaptureCommit: Encodable, Sendable {
             GraphBlock(
                 id: -1, resolver: "extensions.capture.capture.v1",
                 content: try json(
-                    Metadata(captured_at: payload.capturedAt, entry: payload.entry, origin: payload.origin))
+                    Metadata(
+                        captured_at: payload.capturedAt, entry: payload.entry,
+                        origin: payload.origin))
             )
         ])
         for (index, material) in payload.materials.enumerated() {

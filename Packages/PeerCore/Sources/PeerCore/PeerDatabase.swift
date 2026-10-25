@@ -54,7 +54,9 @@ public actor PeerDatabase {
                 """, logger: Self.logger)
             let rows = try await connection.query(
                 "SELECT inkcre.renew_peer_lease(\(target.peerID),120)", logger: Self.logger)
-            for try await expiry in rows.decode(Date.self) { return expiry.addingTimeInterval(-120) }
+            for try await expiry in rows.decode(Date.self) {
+                return expiry.addingTimeInterval(-120)
+            }
             throw PeerError.connection("信息库未返回 Peer 联络结果。")
         }
     }

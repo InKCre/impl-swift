@@ -12,16 +12,19 @@ final class PeerMainWindow: NSWindow {
     }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
-        guard item.action == #selector(toggleSidebar(_:)) else { return super.validateUserInterfaceItem(item) }
+        guard item.action == #selector(toggleSidebar(_:)) else {
+            return super.validateUserInterfaceItem(item)
+        }
         (item as? NSMenuItem)?.title = model.columnVisibility == .detailOnly ? "显示侧栏" : "隐藏侧栏"
         return attachedSheet == nil
     }
 
     init(model: CaptureModel) {
         self.model = model
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720),
-                   styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-                   backing: .buffered, defer: false)
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered, defer: false)
         title = "InKCre"
         toolbarStyle = .unified
         minSize = NSSize(width: 760, height: 520)

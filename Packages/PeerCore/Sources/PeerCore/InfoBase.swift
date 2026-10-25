@@ -11,6 +11,8 @@ public struct GraphBlock: Sendable, Encodable {
         self.content = content
     }
 }
+// 数据库图协议直接使用 from_／to_ 字段。
+// swift-format-ignore: AlwaysUseLowerCamelCase
 public struct GraphRelation: Sendable, Encodable {
     public let from_: Int
     public let to_: Int

@@ -71,15 +71,18 @@ public struct PeerConnectionEditor: View {
                         defer { saving = false }
                         do {
                             let saved = try await settings.saveEdited(
-                                host: server, port: port, database: database, username: username, tls: tls,
-                                web: web, password: secret, previous: target, credentials: credentials)
+                                host: server, port: port, database: database, username: username,
+                                tls: tls,
+                                web: web, password: secret, previous: target,
+                                credentials: credentials)
                             onSaved(saved)
                             secret = ""
                             dismiss()
                         } catch { issue = error.localizedDescription }
                     }
                 }.keyboardShortcut(.defaultAction)
-                    .disabled(saving || server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(
+                        saving || server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(20).frame(width: 520)
             .interactiveDismissDisabled(saving)

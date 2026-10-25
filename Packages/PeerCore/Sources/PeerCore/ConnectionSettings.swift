@@ -24,11 +24,13 @@ public actor ConnectionSettings {
         let web = web.trimmingCharacters(in: .whitespacesAndNewlines)
         let webURL = web.isEmpty ? nil : URL(string: web)
         if !web.isEmpty && webURL == nil { throw PeerError.invalid("Web 地址无效。") }
-        let same = previous?.host == host && previous?.port == port && previous?.database == database
+        let same =
+            previous?.host == host && previous?.port == port && previous?.database == database
         let sameCredentials = same && previous?.username == username
         let target = ConnectionTarget(
             id: sameCredentials ? previous!.id : UUID(), peerID: same ? previous!.peerID : UUID(),
-            host: host, port: port, database: database, username: username, tls: tls, webURL: webURL,
+            host: host, port: port, database: database, username: username, tls: tls,
+            webURL: webURL,
             name: host)
         try target.validate()
         if !password.isEmpty { try credentials.save(password, for: target.id) }
