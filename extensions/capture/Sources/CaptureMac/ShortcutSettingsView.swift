@@ -12,12 +12,17 @@ struct ShortcutSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(shortcuts.recording == action ? "按下快捷键…" : shortcuts.bindings[action]?.label ?? "未设置") {
+                Button(
+                    shortcuts.recording == action
+                        ? "按下快捷键…" : shortcuts.bindings[action]?.label ?? "未设置"
+                ) {
                     shortcuts.beginRecording(action)
                 }
                 .frame(minWidth: 110)
                 .accessibilityLabel("\(action.title)快捷键")
-                .accessibilityValue(shortcuts.recording == action ? "正在录入" : shortcuts.bindings[action]?.label ?? "未设置")
+                .accessibilityValue(
+                    shortcuts.recording == action
+                        ? "正在录入" : shortcuts.bindings[action]?.label ?? "未设置")
                 Button("清除") { shortcuts.update(nil, for: action) }
                     .disabled(shortcuts.bindings[action] == nil)
                     .accessibilityLabel("清除\(action.title)快捷键")

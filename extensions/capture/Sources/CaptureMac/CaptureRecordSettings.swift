@@ -29,7 +29,8 @@ struct CaptureRecordSettings: View {
                 Text("密码保存到原连接的 Keychain 项，并继续收入这条记录。数据库目标和当前使用的信息库不会改变。")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                TextField("Web 地址，例如 https://inkcre.example.com", text: $value).focused($inputFocused)
+                TextField("Web 地址，例如 https://inkcre.example.com", text: $value).focused(
+                    $inputFocused)
                 Text("填写该信息库对应的 InKCre Web 地址，用于打开已收入内容。此操作不会更换当前连接。")
                     .font(.caption).foregroundStyle(.secondary)
             }

@@ -91,7 +91,9 @@ public struct CapturePayload: Codable, Sendable {
             throw PeerError.invalid("先写下想法，或加入一份材料。")
         }
         guard materials.count <= 128 else { throw PeerError.invalid("材料数量超过 128 项。") }
-        for (value, limit) in [(origin?.applicationID, 1024), (origin?.title, 4096), (origin?.url, 8192)] {
+        for (value, limit) in [
+            (origin?.applicationID, 1024), (origin?.title, 4096), (origin?.url, 8192),
+        ] {
             guard (value?.unicodeScalars.count ?? 0) <= limit else {
                 throw PeerError.invalid("来源信息过长，请缩短后收入。")
             }
@@ -108,7 +110,8 @@ public struct CapturePayload: Codable, Sendable {
                 }
             case .image:
                 guard let bytes = material.data, !bytes.isEmpty,
-                    ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(material.mimeType),
+                    ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(
+                        material.mimeType),
                     material.text == nil
                 else {
                     throw PeerError.invalid("图片为空或格式不支持。")
@@ -119,7 +122,8 @@ public struct CapturePayload: Codable, Sendable {
                     CGImageSourceGetStatus(source) == .statusComplete,
                     let identifier = CGImageSourceGetType(source) as String?,
                     UTType(identifier)?.preferredMIMEType == material.mimeType,
-                    let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                    let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                        as? [CFString: Any],
                     let width = properties[kCGImagePropertyPixelWidth] as? Int,
                     let height = properties[kCGImagePropertyPixelHeight] as? Int,
                     width > 0, height > 0, width <= 89_478_485 / height,
@@ -140,7 +144,8 @@ public struct CaptureResult: Codable, Sendable, Equatable {
     public let committedAt: Date
     public let availability: Availability
 
-    public init(submissionID: UUID, rootBlockID: Int, committedAt: Date, availability: Availability) {
+    public init(submissionID: UUID, rootBlockID: Int, committedAt: Date, availability: Availability)
+    {
         self.submissionID = submissionID
         self.rootBlockID = rootBlockID
         let formatter = ISO8601DateFormatter()

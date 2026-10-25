@@ -29,7 +29,8 @@ extension CapturePayload {
                     throw PeerError.invalid("图片材料格式不正确。")
                 }
                 return [
-                    "kind": "image", "mime_type": mime, "filename": material.filename as Any? ?? null,
+                    "kind": "image", "mime_type": mime,
+                    "filename": material.filename as Any? ?? null,
                     "data_sha256": Self.sha256(data),
                 ]
             }
