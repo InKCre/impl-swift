@@ -63,6 +63,8 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     private var presence: Task<Void, Never>?
     @Published var connectionIssue: String?
     @Published var connection: ConnectionTarget?
+    @Published var savedConnections: [ConnectionTarget] = []
+    @Published var changingConnection = false
     private var manager: PeerSettingsWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -83,7 +85,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         presence = Task {
             while !Task.isCancelled {
                 do {
-                    connection = try await context.connections.load()
+                    try await reloadConnections()
                     if let target = connection {
                         _ = try await PeerDatabase.shared.register(
                             target, password: context.credentials.read(for: target.id))
@@ -188,7 +190,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         NSApp.activate(ignoringOtherApps: true)
         manager?.makeKeyAndOrderFront(nil)
         Task {
-            do { connection = try await context.connections.load() }
+            do { try await reloadConnections() }
             catch { connectionIssue = error.localizedDescription }
         }
     }
@@ -207,8 +209,32 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
 
     private func updateStatus() { objectWillChange.send() }
 
+    func reloadConnections() async throws {
+        let saved = try await context.connections.loadAll()
+        savedConnections = saved.connections
+        connection = saved.current
+    }
+
+    func selectConnection(_ id: UUID) async {
+        guard !changingConnection, capture.canOpenSettings else { return }
+        changingConnection = true
+        defer { changingConnection = false }
+        do {
+            let target = try await context.connections.select(id)
+            await connectionDidChange(target)
+        } catch { connectionIssue = error.localizedDescription }
+    }
+
+    private func connectionDidChange(_ target: ConnectionTarget) async {
+        connection = target
+        connectionIssue = nil
+        capture.connectionDidChange(target)
+        do { try await reloadConnections() } catch { connectionIssue = error.localizedDescription }
+        await localFiles.model.connectionDidChange(target)
+    }
+
     func editConnection(_ target: ConnectionTarget?, onFinished: (@MainActor () -> Void)? = nil) {
-        guard capture.canOpenSettings else { return }
+        guard !changingConnection, capture.canOpenSettings else { return }
         showSettings(.connection)
         guard let manager, manager.attachedSheet == nil else { return }
         let sheet = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
@@ -221,11 +247,12 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
             settings: context.connections, credentials: context.credentials,
             target: target, saveTitle: onFinished == nil ? "保存" : "保存并返回采集", onCancel: close,
             onSaved: { [weak self] target in
-                self?.connection = target
-                self?.connectionIssue = nil
-                self?.capture.connectionDidChange(target)
-                Task { await self?.localFiles.model.refresh() }
-                close()
+                self?.changingConnection = true
+                Task {
+                    await self?.connectionDidChange(target)
+                    self?.changingConnection = false
+                    close()
+                }
             }))
         sheet.contentView = content
         sheet.setContentSize(content.fittingSize)

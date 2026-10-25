@@ -20,7 +20,7 @@ struct PeerMainView: View {
         case .capture, .records: host.capture.pageView()
         case .files:
           if host.filesRuntime.running {
-            LocalFilesView(model: host.localFiles.model)
+            LocalFilesView(model: host.localFiles.model).disabled(host.changingConnection)
           } else {
             ContentUnavailableView {
               Label("本地文件扩展已停用", systemImage: "folder")

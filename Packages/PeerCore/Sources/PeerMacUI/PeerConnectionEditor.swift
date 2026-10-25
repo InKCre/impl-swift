@@ -9,6 +9,7 @@ public struct PeerConnectionEditor: View {
     private let target: ConnectionTarget?
     private let saveTitle: String
     @Environment(\.dismiss) private var dismiss
+    @State private var name: String
     @State private var server: String
     @State private var port: String
     @State private var database: String
@@ -32,6 +33,7 @@ public struct PeerConnectionEditor: View {
         self.saveTitle = saveTitle
         self.onCancel = onCancel
         self.onSaved = onSaved
+        _name = State(initialValue: target?.name ?? "")
         _server = State(initialValue: target?.host ?? "")
         _port = State(initialValue: String(target?.port ?? 5432))
         _database = State(initialValue: target?.database ?? "inkcre")
@@ -44,6 +46,7 @@ public struct PeerConnectionEditor: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("连接共享信息库").font(.title2).bold()
             Form {
+                TextField("连接名称", text: $name)
                 TextField("PostgreSQL 主机", text: $server).focused($addressFocused)
                 TextField("端口", text: $port)
                 TextField("数据库", text: $database)
@@ -72,7 +75,7 @@ public struct PeerConnectionEditor: View {
                         do {
                             let saved = try await settings.saveEdited(
                                 host: server, port: port, database: database, username: username, tls: tls,
-                                web: web, password: secret, previous: target, credentials: credentials)
+                                web: web, password: secret, name: name, previous: target, credentials: credentials)
                             onSaved(saved)
                             secret = ""
                             dismiss()

@@ -62,27 +62,37 @@ final class PeerSettingsWindow: NSWindow, NSWindowDelegate {
 struct ConnectionSettingsView: View {
     @ObservedObject var host: PeerHost
     var body: some View {
-        Group {
-            if let target = host.connection {
-                Form {
-                    Section("共享信息库") {
-                        LabeledContent("信息库", value: target.name)
-                        LabeledContent("PostgreSQL", value: "\(target.host):\(target.port)/\(target.database)")
-                        LabeledContent("运行角色", value: target.username)
-                        LabeledContent("Peer", value: target.peerID.uuidString.lowercased()).textSelection(.enabled)
-                        if let web = target.webURL { LabeledContent("Web 地址", value: web.absoluteString) }
-                        Button("编辑连接…") { host.editConnection(target) }
-                        if let issue = host.connectionIssue { Text(issue).foregroundStyle(.red).textSelection(.enabled) }
+        Form {
+            Section("连接") {
+                if !host.savedConnections.isEmpty {
+                    Picker("当前连接", selection: Binding<UUID?>(
+                        get: { host.connection?.id },
+                        set: { id in if let id { Task { await host.selectConnection(id) } } }
+                    )) {
+                        ForEach(host.savedConnections) { target in
+                            Text(target.name).tag(Optional(target.id))
+                        }
                     }
-                }.formStyle(.grouped)
-            } else {
-                ContentUnavailableView {
-                    Label("未连接信息库", systemImage: "network")
-                } actions: {
-                    Button("连接信息库…") { host.editConnection(nil) }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                HStack {
+                    Button("添加连接…") { host.editConnection(nil) }
+                    if let target = host.connection {
+                        Button("编辑连接…") { host.editConnection(target) }
+                    }
+                }
+            }.disabled(host.changingConnection)
+            if let target = host.connection {
+                Section("共享信息库") {
+                    LabeledContent("PostgreSQL", value: "\(target.host):\(target.port)/\(target.database)")
+                    LabeledContent("运行角色", value: target.username)
+                    LabeledContent("Peer", value: target.peerID.uuidString.lowercased()).textSelection(.enabled)
+                    if let web = target.webURL { LabeledContent("Web 地址", value: web.absoluteString) }
+                }
             }
-        }
+            if let issue = host.connectionIssue {
+                Text(issue).foregroundStyle(.red).textSelection(.enabled)
+            }
+        }.formStyle(.grouped)
     }
 }
 

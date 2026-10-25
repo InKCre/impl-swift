@@ -7,6 +7,43 @@ import Testing
 
 @Suite(.serialized) @MainActor
 struct HostInterfaceTests {
+    @Test func switchingSavedConnectionUpdatesHostAndDirectorySelection() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let domain = "dev.inkcre.connections-test.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain); try? FileManager.default.removeItem(at: directory) }
+        defaults.set(false, forKey: "extensions.inkcre/capture.enabled")
+        defaults.set(false, forKey: "extensions.inkcre/local-files.enabled")
+        let context = PeerHostContext(identity: domain, directory: directory)
+        let first = ConnectionTarget(host: "one.example", database: "one", username: "peer", name: "个人")
+        let second = ConnectionTarget(host: "two.example", database: "two", username: "peer", name: "工作")
+        try await context.connections.save(first)
+        try await context.connections.save(second)
+        let host = PeerHost(context: context, defaults: defaults)
+        try await host.reloadConnections()
+        #expect(host.savedConnections == [first, second])
+        await host.selectConnection(first.id)
+        #expect(host.connection == first)
+        #expect(host.localFiles.model.target == first)
+        await host.selectConnection(second.id)
+        #expect(host.connection == second)
+        #expect(host.localFiles.model.target == second)
+        #expect(host.localFiles.model.sources.isEmpty)
+        #expect(!host.changingConnection)
+        if let path = ProcessInfo.processInfo.environment["INKCRE_LAYOUT_EVIDENCE_DIR"] {
+            let window = PeerSettingsWindow(host: host)
+            defer { window.orderOut(nil) }
+            window.select(.connection)
+            let view = try #require(window.contentView?.superview)
+            view.layoutSubtreeIfNeeded()
+            let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            try #require(bitmap.representation(using: .png, properties: [:])).write(to:
+                URL(fileURLWithPath: path).appendingPathComponent("multiple-connections.png"))
+        }
+        #expect(try await ConnectionSettings(url: directory.appendingPathComponent("connection.json")).load() == second)
+    }
+
     @Test func nativeSidebarShortcutAndSettingsTabsRemainAvailableWithoutCapture() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -115,16 +115,37 @@ public final class LocalFilesModel: ObservableObject {
     for id in Array(monitors.keys) { await stopMonitor(id) }
   }
 
+  public func connectionDidChange(_ connection: ConnectionTarget) async {
+    directoryPanel?.cancel(nil)
+    directoryPanel = nil
+    removal = nil
+    recordsTask?.cancel()
+    textTask?.cancel()
+    target = connection
+    selectedSource = nil
+    selectedFile = nil
+    selectedText = nil
+    textIssue = nil
+    sources = []
+    records = []
+    issue = nil
+    // A coalesced old refresh must settle before the new selection is refreshed.
+    await refreshTask?.value
+    await refresh()
+  }
+
   public func refresh() async {
     if let refreshTask {
       await refreshTask.value
       return
     }
     guard running else { return }
-    let task = Task { await performRefresh() }
+    let task = Task {
+      defer { refreshTask = nil }
+      await performRefresh()
+    }
     refreshTask = task
     await task.value
-    refreshTask = nil
   }
 
   private func performRefresh() async {
