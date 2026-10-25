@@ -4,12 +4,15 @@ import Testing
 
 struct ConnectionSettingsTests {
     @Test func savesMultipleConnectionsAndRestoresSelectionWithoutChangingIdentity() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("connection.json")
         let settings = ConnectionSettings(url: url)
-        let first = ConnectionTarget(host: "one.example", database: "first", username: "peer", name: "个人")
-        let second = ConnectionTarget(host: "two.example", database: "second", username: "peer", name: "工作")
+        let first = ConnectionTarget(
+            host: "one.example", database: "first", username: "peer", name: "个人")
+        let second = ConnectionTarget(
+            host: "two.example", database: "second", username: "peer", name: "工作")
         try await settings.save(first)
         try await settings.save(second)
         #expect(try await settings.load() == second)

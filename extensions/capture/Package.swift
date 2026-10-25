@@ -11,7 +11,8 @@ let package = Package(
     targets: [
         .systemLibrary(name: "CSQLite"),
         .target(
-            name: "Capture", dependencies: ["CSQLite", .product(name: "PeerCore", package: "PeerCore")],
+            name: "Capture",
+            dependencies: ["CSQLite", .product(name: "PeerCore", package: "PeerCore")],
             resources: [.copy("Resources/extension.json")]),
         .target(
             name: "CaptureMac",

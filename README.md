@@ -13,7 +13,7 @@
 需要 Xcode 26.2 / Swift 6.2。PostgresNIO 及依赖通过 SwiftPM 解析，精确修订固定在 Package.resolved。
 
 ```sh
-swift test
+bash scripts/check.sh
 bash scripts/build-app.sh
 open dist/InKCre.app
 ```

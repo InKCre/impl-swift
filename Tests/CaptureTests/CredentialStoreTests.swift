@@ -39,10 +39,11 @@ struct CredentialStoreTests {
         let service = "dev.inkcre.credentials-test.\(UUID())"
         let connection = UUID()
         defer {
-            SecItemDelete([
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-            ] as CFDictionary)
+            SecItemDelete(
+                [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: service,
+                ] as CFDictionary)
         }
         let store = CredentialStore(service: service)
         try store.save("first-fixture", for: connection)

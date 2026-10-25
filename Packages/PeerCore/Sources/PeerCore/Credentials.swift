@@ -34,7 +34,7 @@ public struct CredentialStore: Sendable {
         // File-based Keychain ignores LAContext; serialize and restore its process-wide UI policy.
         var previous: DarwinBoolean = false
         guard SecKeychainGetUserInteractionAllowed(&previous) == errSecSuccess,
-              SecKeychainSetUserInteractionAllowed(allowInteraction) == errSecSuccess
+            SecKeychainSetUserInteractionAllowed(allowInteraction) == errSecSuccess
         else { throw PeerError.storage("无法设置密钥串访问方式。") }
         defer { SecKeychainSetUserInteractionAllowed(previous.boolValue) }
         let query: [String: Any] = [

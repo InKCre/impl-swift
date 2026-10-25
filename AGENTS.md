@@ -12,4 +12,4 @@ Capture 和此次 Mac 分发尚未发布，直接修订候选 schema，不增加
 
 同次提交不得换 UUID、变更材料或改投另一个信息库。只有经过指纹核对的共享回执可以清理本机材料。选区失败不能读旧剪贴板充数；截图只持久化明确选择的区域。
 
-运行 `swift test` 和 `bash scripts/build-app.sh`。编译不证明系统权限、真实选区、焦点或多屏行为；真实应用验证使用合成内容，按实际结果记录。开发包使用 `dev.inkcre.capture`；发布身份、签名、公证只能使用显式提供的输入。
+运行 `bash scripts/check.sh` 和 `bash scripts/build-app.sh`。前者与 CI 共用 Xcode 26.2 的 Swift 格式／lint 检查和测试入口，覆盖 Host、PeerCore 与 first-party 扩展；固定来源的 Vendor 代码按上游格式维护。编译不证明系统权限、真实选区、焦点或多屏行为；真实应用验证使用合成内容，按实际结果记录。开发包使用 `dev.inkcre.capture`；发布身份、签名、公证只能使用显式提供的输入。

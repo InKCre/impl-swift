@@ -14,30 +14,33 @@ struct CapturePageView: View {
                     } actions: {
                         Button("在主窗口继续") { model.continueInMain() }
                     }
-                } else { CaptureEditor(model: model) }
+                } else {
+                    CaptureEditor(model: model)
+                }
             case .queue: CaptureRecordsView(model: model)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
-        .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                if model.pane == .capture && model.editorOwner == .main {
-                    Button("新想法", systemImage: "square.and.pencil") { model.newThought() }
-                        .help("新想法（⌘N）")
-                        .disabled(model.submitting)
-                    Button("粘贴材料", systemImage: "doc.on.clipboard") { model.pasteMaterial() }
-                        .help("粘贴材料")
-                        .disabled(model.submitting)
-                    Button("框选截图", systemImage: "viewfinder") { model.takeScreenshot?() }
-                        .help("框选截图")
-                        .disabled(model.submitting)
-                }
-                Button("快捷采集", systemImage: "rectangle.and.pencil.and.ellipsis") { model.showQuick?() }
+            .toolbar {
+                ToolbarItemGroup(placement: .automatic) {
+                    if model.pane == .capture && model.editorOwner == .main {
+                        Button("新想法", systemImage: "square.and.pencil") { model.newThought() }
+                            .help("新想法（⌘N）")
+                            .disabled(model.submitting)
+                        Button("粘贴材料", systemImage: "doc.on.clipboard") { model.pasteMaterial() }
+                            .help("粘贴材料")
+                            .disabled(model.submitting)
+                        Button("框选截图", systemImage: "viewfinder") { model.takeScreenshot?() }
+                            .help("框选截图")
+                            .disabled(model.submitting)
+                    }
+                    Button("快捷采集", systemImage: "rectangle.and.pencil.and.ellipsis") {
+                        model.showQuick?()
+                    }
                     .help("打开快捷采集面板")
+                }
             }
-        }
-        .modifier(CaptureAlerts(model: model, owner: .main))
+            .modifier(CaptureAlerts(model: model, owner: .main))
     }
-
 
 }
 
@@ -91,15 +94,18 @@ private struct CaptureAlerts: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        content.alert(presentedAlert?.title ?? "需要处理", isPresented: Binding(
-            get: { presentedAlert != nil && model.editorOwner == owner },
-            set: {
-                if !$0 && model.editorOwner == owner {
-                    model.error = nil
-                    model.removalRequest = nil
+        content.alert(
+            presentedAlert?.title ?? "需要处理",
+            isPresented: Binding(
+                get: { presentedAlert != nil && model.editorOwner == owner },
+                set: {
+                    if !$0 && model.editorOwner == owner {
+                        model.error = nil
+                        model.removalRequest = nil
+                    }
                 }
-            }
-        ), presenting: presentedAlert) { alert in
+            ), presenting: presentedAlert
+        ) { alert in
             switch alert {
             case .error:
                 Button("知道了", role: .cancel) { model.error = nil }
@@ -107,6 +113,8 @@ private struct CaptureAlerts: ViewModifier {
                 Button(request.actionTitle, role: .destructive) { model.confirmRemoval(request) }
                 Button("取消", role: .cancel) { model.removalRequest = nil }
             }
-        } message: { alert in Text(alert.message) }
+        } message: { alert in
+            Text(alert.message)
+        }
     }
 }

@@ -5,8 +5,11 @@ extension PeerDatabase {
     public static func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         if let transaction = error as? PostgresTransactionError,
-           transaction.rollbackError == nil, transaction.commitError == nil,
-           let cause = transaction.closureError { return isCancellation(cause) }
+            transaction.rollbackError == nil, transaction.commitError == nil,
+            let cause = transaction.closureError
+        {
+            return isCancellation(cause)
+        }
         return false
     }
     public static func failure(_ error: Error, dispatched: Bool = false) -> PeerError {

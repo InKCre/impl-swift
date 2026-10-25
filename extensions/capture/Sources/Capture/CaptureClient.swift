@@ -12,7 +12,9 @@ public struct CaptureClient: CaptureTransport {
     public static let descriptor: NativeExtensionDescriptor = {
         let bundle: Bundle
         if Bundle.main.bundleURL.pathExtension == "app" {
-            guard let url = Bundle.main.url(forResource: "InKCreCapture_Capture", withExtension: "bundle"),
+            guard
+                let url = Bundle.main.url(
+                    forResource: "InKCreCapture_Capture", withExtension: "bundle"),
                 let packaged = Bundle(url: url)
             else {
                 preconditionFailure("Missing packaged Capture distribution")
@@ -38,7 +40,8 @@ public struct CaptureClient: CaptureTransport {
         }
         do {
             let client = try await database.client(for: target, password: secret)
-            return try await Self.receipt(record.id, digest: payload.canonicalDigest(), client: client)
+            return try await Self.receipt(
+                record.id, digest: payload.canonicalDigest(), client: client)
         } catch { throw PeerDatabase.failure(error, dispatched: false) }
     }
 
@@ -71,7 +74,8 @@ public struct CaptureClient: CaptureTransport {
             _ = try await database.register(target, password: secret)
             try await database.join(target, password: secret, extension: Self.descriptor)
             let client = try await database.client(for: target, password: secret)
-            let result = try await client.withTransaction(logger: PeerDatabase.logger) { connection in
+            let result = try await client.withTransaction(logger: PeerDatabase.logger) {
+                connection in
                 try await PeerDatabase.requireSelection(
                     Self.descriptor, peerID: target.peerID, on: connection)
                 // The UUID lock covers receipt lookup, graph writes and the receipt itself.
@@ -96,10 +100,14 @@ public struct CaptureClient: CaptureTransport {
                 let ids = try await InfoBase.persist(
                     blocks: command.graph.blocks, relations: command.graph.relations,
                     blobs: Dictionary(
-                        uniqueKeysWithValues: command.graph.blobs.map { ($0.block_id, $0.data_base64) }),
+                        uniqueKeysWithValues: command.graph.blobs.map {
+                            ($0.block_id, $0.data_base64)
+                        }),
                     on: connection
                 )
-                guard let root = ids[command.graph.root_local_id] else { throw PeerError.invalid("采集图缺少根。") }
+                guard let root = ids[command.graph.root_local_id] else {
+                    throw PeerError.invalid("采集图缺少根。")
+                }
                 let inserted = try await connection.query(
                     """
                     INSERT INTO inkcre.capture_receipts(submission_id,payload_digest,graph_digest,root_block_id)

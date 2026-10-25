@@ -46,7 +46,8 @@ private actor PausedRecovery: CaptureTransport {
     let store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
     for text in ["第一份", "第二份"] {
         _ = try await store.freeze(
-            CaptureRecord(payload: CapturePayload(materials: [Material(text: text)])), target: target)
+            CaptureRecord(payload: CapturePayload(materials: [Material(text: text)])),
+            target: target)
     }
     let transport = PausedRecovery()
     let queue = CaptureQueue(store: store, credentials: credentials, client: transport)

@@ -4,7 +4,10 @@ import PackageDescription
 let package = Package(
     name: "InKCre", platforms: [.macOS(.v15)],
     products: [.executable(name: "InKCre", targets: ["InKCreApp"])],
-    dependencies: [.package(path: "Packages/PeerCore"), .package(path: "extensions/capture"), .package(path: "extensions/local-files")],
+    dependencies: [
+        .package(path: "Packages/PeerCore"), .package(path: "extensions/capture"),
+        .package(path: "extensions/local-files"),
+    ],
     targets: [
         .executableTarget(
             name: "InKCreApp",
@@ -14,11 +17,13 @@ let package = Package(
                 .product(name: "CaptureMac", package: "capture"),
                 .product(name: "LocalFilesMac", package: "local-files"),
             ]),
-        .testTarget(name: "LocalFilesTests", dependencies: [
-            .product(name: "LocalFiles", package: "local-files"),
-            .product(name: "LocalFilesMac", package: "local-files"),
-            .product(name: "PeerCore", package: "PeerCore")
-        ], path: "Tests/LocalFilesTests"),
+        .testTarget(
+            name: "LocalFilesTests",
+            dependencies: [
+                .product(name: "LocalFiles", package: "local-files"),
+                .product(name: "LocalFilesMac", package: "local-files"),
+                .product(name: "PeerCore", package: "PeerCore"),
+            ], path: "Tests/LocalFilesTests"),
         .testTarget(name: "HostTests", dependencies: ["InKCreApp"], path: "Tests/HostTests"),
         .testTarget(
             name: "CaptureTests",

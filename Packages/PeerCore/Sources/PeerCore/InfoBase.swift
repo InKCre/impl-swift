@@ -11,6 +11,8 @@ public struct GraphBlock: Sendable, Encodable {
         self.content = content
     }
 }
+// 数据库图协议直接使用 from_／to_ 字段。
+// swift-format-ignore: AlwaysUseLowerCamelCase
 public struct GraphRelation: Sendable, Encodable {
     public let from_: Int
     public let to_: Int
@@ -24,23 +26,32 @@ public struct GraphRelation: Sendable, Encodable {
 
 /// Uses the caller's transaction; storage pointers and byte mechanics belong to the Host.
 public enum InfoBase {
-    public static func createBlock(resolver: String, content: String, on connection: PostgresConnection) async throws -> Int {
+    public static func createBlock(
+        resolver: String, content: String, on connection: PostgresConnection
+    ) async throws -> Int {
         let rows = try await connection.query(
-            "INSERT INTO inkcre.blocks(resolver,content) VALUES (\(resolver),\(content)) RETURNING id", logger: PeerDatabase.logger)
+            "INSERT INTO inkcre.blocks(resolver,content) VALUES (\(resolver),\(content)) RETURNING id",
+            logger: PeerDatabase.logger)
         for try await id in rows.decode(Int.self) { return id }
         throw PeerError.connection("信息库未返回资料标识。")
     }
 
-    public static func updateBlock(_ id: Int, content: String, on connection: PostgresConnection) async throws {
+    public static func updateBlock(_ id: Int, content: String, on connection: PostgresConnection)
+        async throws
+    {
         let rows = try await connection.query(
-            "UPDATE inkcre.blocks SET content=\(content) WHERE id=\(id) RETURNING id", logger: PeerDatabase.logger)
+            "UPDATE inkcre.blocks SET content=\(content) WHERE id=\(id) RETURNING id",
+            logger: PeerDatabase.logger)
         for try await _ in rows.decode(Int.self) { return }
         throw PeerError.needsAction("资料已被移除。")
     }
 
-    public static func relate(_ from: Int, to: Int, content: String, on connection: PostgresConnection) async throws {
+    public static func relate(
+        _ from: Int, to: Int, content: String, on connection: PostgresConnection
+    ) async throws {
         try await connection.query(
-            "INSERT INTO inkcre.relations(from_,to_,content) VALUES (\(from),\(to),\(content))", logger: PeerDatabase.logger)
+            "INSERT INTO inkcre.relations(from_,to_,content) VALUES (\(from),\(to),\(content))",
+            logger: PeerDatabase.logger)
     }
 
     public static func persist(

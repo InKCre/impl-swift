@@ -53,17 +53,29 @@ struct CaptureEditor: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("本次材料").font(.subheadline).foregroundStyle(.secondary)
-                        ForEach(Array((model.draft.payload?.materials ?? []).enumerated()), id: \.element.id) { index, material in
-                            if !isManual || material.id != model.draft.payload?.materials.first(where: { $0.kind == .text })?.id {
+                        ForEach(
+                            Array((model.draft.payload?.materials ?? []).enumerated()),
+                            id: \.element.id
+                        ) { index, material in
+                            if !isManual
+                                || material.id
+                                    != model.draft.payload?.materials.first(where: {
+                                        $0.kind == .text
+                                    })?.id
+                            {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
-                                        Text("材料 \(index + 1)").font(.caption).foregroundStyle(.secondary)
+                                        Text("材料 \(index + 1)").font(.caption).foregroundStyle(
+                                            .secondary)
                                         Spacer()
-                                        Button("移除", systemImage: "xmark") { model.requestRemoveMaterial(material.id) }
-                                            .accessibilityLabel("移除第 \(index + 1) 项材料")
+                                        Button("移除", systemImage: "xmark") {
+                                            model.requestRemoveMaterial(material.id)
+                                        }
+                                        .accessibilityLabel("移除第 \(index + 1) 项材料")
                                     }
                                     if material.kind == .text {
-                                        Text(material.text ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                                        Text(material.text ?? "").textSelection(.enabled).frame(
+                                            maxWidth: .infinity, alignment: .leading)
                                     } else {
                                         CaptureImagePreview(material: material)
                                     }
@@ -82,15 +94,19 @@ struct CaptureEditor: View {
             }
             if !isManual || showsAnnotation || !model.annotation.isEmpty {
                 DisclosureGroup("补充想法（可选）", isExpanded: $showsAnnotation) {
-                    TextEditor(text: Binding(get: { model.annotation }, set: { model.annotation = $0 }))
-                        .focused($focusedField, equals: .annotation)
-                        .frame(height: 70).accessibilityLabel("用户附注，与原文分别保存")
+                    TextEditor(
+                        text: Binding(get: { model.annotation }, set: { model.annotation = $0 })
+                    )
+                    .focused($focusedField, equals: .annotation)
+                    .frame(height: 70).accessibilityLabel("用户附注，与原文分别保存")
                 }
             }
             Divider()
             if let record = model.submittedRecord {
                 HStack {
-                    Label("上次采集：\(record.statusLabel)", systemImage: record.state == .confirmed ? "checkmark.circle" : "tray")
+                    Label(
+                        "上次采集：\(record.statusLabel)",
+                        systemImage: record.state == .confirmed ? "checkmark.circle" : "tray")
                     Spacer()
                     Button("查看记录") { model.showRecord(record) }
                 }.font(.callout)
@@ -109,8 +125,10 @@ struct CaptureEditor: View {
                 if isQuickCapture {
                     Button("取消本次") { model.cancelCapture() }
                 } else {
-                    Button("删除草稿", systemImage: "trash", role: .destructive) { model.requestDiscard(model.draft) }
-                        .disabled(!model.hasContent)
+                    Button("删除草稿", systemImage: "trash", role: .destructive) {
+                        model.requestDiscard(model.draft)
+                    }
+                    .disabled(!model.hasContent)
                 }
                 Spacer()
                 Button("导出材料") { model.export(model.draft) }.disabled(!model.hasContent)
@@ -118,21 +136,31 @@ struct CaptureEditor: View {
                     .buttonStyle(.borderedProminent).disabled(!model.hasContent || model.submitting)
             }
         }.padding().disabled(model.submitting)
-            .onAppear { showsAnnotation = !model.annotation.isEmpty; focusEditor() }
-            .onChange(of: model.draft.id) { showsAnnotation = !model.annotation.isEmpty; focusEditor() }
-            .onChange(of: showsAnnotation) { _, expanded in if expanded { focusedField = .annotation } }
+            .onAppear {
+                showsAnnotation = !model.annotation.isEmpty
+                focusEditor()
+            }
+            .onChange(of: model.draft.id) {
+                showsAnnotation = !model.annotation.isEmpty
+                focusEditor()
+            }
+            .onChange(of: showsAnnotation) { _, expanded in
+                if expanded { focusedField = .annotation }
+            }
             .onChange(of: model.submitting) { _, busy in if !busy { focusEditor() } }
     }
 
     private var standaloneImage: Capture.Material? {
         guard let payload = model.draft.payload, payload.materials.count == 1,
-              payload.materials[0].kind == .image, payload.origin == nil else { return nil }
+            payload.materials[0].kind == .image, payload.origin == nil
+        else { return nil }
         return payload.materials[0]
     }
 
     private var additionalMaterials: Bool {
         let materials = model.draft.payload?.materials ?? []
-        return materials.contains { $0.kind == .image } || materials.filter { $0.kind == .text }.count > 1
+        return materials.contains { $0.kind == .image }
+            || materials.filter { $0.kind == .text }.count > 1
     }
 
     private func focusEditor() {

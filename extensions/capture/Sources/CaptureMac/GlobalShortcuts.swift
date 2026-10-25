@@ -1,8 +1,8 @@
 import AppKit
-import Carbon.HIToolbox
 import Capture
-import PeerCore
+import Carbon.HIToolbox
 import Combine
+import PeerCore
 
 @MainActor
 final class GlobalShortcuts: ObservableObject {
@@ -24,13 +24,13 @@ final class GlobalShortcuts: ObservableObject {
         if let data = defaults.data(forKey: Self.settingsKey) {
             bindings = try JSONDecoder().decode([ShortcutAction: RecordedShortcut].self, from: data)
         } else {
-            bindings = Dictionary(uniqueKeysWithValues: ShortcutAction.allCases.map { ($0, $0.defaultShortcut) })
+            bindings = Dictionary(
+                uniqueKeysWithValues: ShortcutAction.allCases.map { ($0, $0.defaultShortcut) })
 
         }
         var failures: [String] = []
         for (action, shortcut) in bindings {
-            do { try validate(shortcut, for: action) }
-            catch {
+            do { try validate(shortcut, for: action) } catch {
                 bindings[action] = nil
                 failures.append("已停用无效的“\(action.title)”快捷键：\(error.localizedDescription)")
             }
@@ -40,19 +40,24 @@ final class GlobalShortcuts: ObservableObject {
 
     func start() throws {
         guard handler == nil else { return }
-        var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let status = InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
-            guard let event, let context else { return OSStatus(eventNotHandledErr) }
-            var identity = EventHotKeyID()
-            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject),
-                                          EventParamType(typeEventHotKeyID), nil,
-                                          MemoryLayout<EventHotKeyID>.size, nil, &identity)
-            guard status == noErr, identity.signature == 0x494e4b43,
-                  let action = ShortcutAction(rawValue: identity.id) else { return OSStatus(eventNotHandledErr) }
-            let owner = Unmanaged<GlobalShortcuts>.fromOpaque(context).takeUnretainedValue()
-            MainActor.assumeIsolated { _ = owner.execute(action, in: nil) }
-            return noErr
-        }, 1, &type, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        var type = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, context in
+                guard let event, let context else { return OSStatus(eventNotHandledErr) }
+                var identity = EventHotKeyID()
+                let status = GetEventParameter(
+                    event, EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID), nil,
+                    MemoryLayout<EventHotKeyID>.size, nil, &identity)
+                guard status == noErr, identity.signature == 0x494e_4b43,
+                    let action = ShortcutAction(rawValue: identity.id)
+                else { return OSStatus(eventNotHandledErr) }
+                let owner = Unmanaged<GlobalShortcuts>.fromOpaque(context).takeUnretainedValue()
+                MainActor.assumeIsolated { _ = owner.execute(action, in: nil) }
+                return noErr
+            }, 1, &type, Unmanaged.passUnretained(self).toOpaque(), &handler)
         guard status == noErr else { throw PeerError.needsAction("无法启用快捷键事件，请重新打开 InKCre。") }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let consumed = MainActor.assumeIsolated {
@@ -70,9 +75,18 @@ final class GlobalShortcuts: ObservableObject {
     func stop() {
         for key in keys.values { UnregisterEventHotKey(key) }
         keys.removeAll()
-        if let handler { RemoveEventHandler(handler); self.handler = nil }
-        if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
-        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver); self.resignObserver = nil }
+        if let handler {
+            RemoveEventHandler(handler)
+            self.handler = nil
+        }
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+        if let resignObserver {
+            NotificationCenter.default.removeObserver(resignObserver)
+            self.resignObserver = nil
+        }
         recording = nil
     }
 
@@ -82,9 +96,13 @@ final class GlobalShortcuts: ObservableObject {
         changed[action] = shortcut
         let data = try JSONEncoder().encode(changed)
         if handler != nil, recording == nil, action.isGlobal,
-           shortcut != bindings[action] || keys[action] == nil {
-            if let shortcut { try register(shortcut, for: action) }
-            else if let old = keys.removeValue(forKey: action) { UnregisterEventHotKey(old) }
+            shortcut != bindings[action] || keys[action] == nil
+        {
+            if let shortcut {
+                try register(shortcut, for: action)
+            } else if let old = keys.removeValue(forKey: action) {
+                UnregisterEventHotKey(old)
+            }
         }
         defaults.set(data, forKey: Self.settingsKey)
         bindings = changed
@@ -93,8 +111,7 @@ final class GlobalShortcuts: ObservableObject {
 
     func update(_ shortcut: RecordedShortcut?, for action: ShortcutAction) {
         cancelRecording()
-        do { try set(shortcut, for: action) }
-        catch { message = error.localizedDescription }
+        do { try set(shortcut, for: action) } catch { message = error.localizedDescription }
     }
 
     func beginRecording(_ action: ShortcutAction) {
@@ -114,7 +131,10 @@ final class GlobalShortcuts: ObservableObject {
         if let action = recording {
             guard !event.isARepeat else { return nil }
             let shortcut = RecordedShortcut(event: event)
-            if event.keyCode == kVK_Escape, shortcut.modifierBits == 0 { cancelRecording(); return nil }
+            if event.keyCode == kVK_Escape, shortcut.modifierBits == 0 {
+                cancelRecording()
+                return nil
+            }
             do {
                 try validate(shortcut, for: action)
                 cancelRecording()
@@ -123,13 +143,17 @@ final class GlobalShortcuts: ObservableObject {
             return nil
         }
         guard isCaptureWindow?(event.window) == true,
-              NSApp.modalWindow == nil,
-              event.window?.attachedSheet == nil,
-              (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return event }
+            NSApp.modalWindow == nil,
+            event.window?.attachedSheet == nil,
+            (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true
+        else { return event }
         let modifiers = event.modifierFlags.intersection(RecordedShortcut.allowedModifiers).rawValue
-        guard let action = ShortcutAction.allCases.first(where: {
-            !$0.isGlobal && bindings[$0]?.keyCode == event.keyCode && bindings[$0]?.modifierBits == modifiers
-        }) else { return event }
+        guard
+            let action = ShortcutAction.allCases.first(where: {
+                !$0.isGlobal && bindings[$0]?.keyCode == event.keyCode
+                    && bindings[$0]?.modifierBits == modifiers
+            })
+        else { return event }
         guard canPerform?(action, event.window) == true else { return event }
         if !event.isARepeat { _ = execute(action, in: event.window) }
         return nil
@@ -137,25 +161,31 @@ final class GlobalShortcuts: ObservableObject {
 
     @discardableResult
     func execute(_ action: ShortcutAction, in window: NSWindow?) -> Bool {
-        guard recording == nil, canPerform?(action, window) == true, let perform else { return false }
+        guard recording == nil, canPerform?(action, window) == true, let perform else {
+            return false
+        }
         perform(action)
         return true
     }
 
     private func validate(_ shortcut: RecordedShortcut, for action: ShortcutAction) throws {
         try shortcut.validate(for: action)
-        if let other = ShortcutAction.allCases.first(where: { $0 != action && bindings[$0] == shortcut }) {
+        if let other = ShortcutAction.allCases.first(where: {
+            $0 != action && bindings[$0] == shortcut
+        }) {
             throw PeerError.invalid("\(shortcut.label) 已用于“\(other.title)”，请换一个组合。原设置未更改。")
         }
     }
 
     private func register(_ shortcut: RecordedShortcut, for action: ShortcutAction) throws {
         var reference: EventHotKeyRef?
-        let status = RegisterEventHotKey(UInt32(shortcut.keyCode), shortcut.carbonModifiers,
-                                        EventHotKeyID(signature: 0x494e4b43, id: action.rawValue),
-                                        GetApplicationEventTarget(), 0, &reference)
+        let status = RegisterEventHotKey(
+            UInt32(shortcut.keyCode), shortcut.carbonModifiers,
+            EventHotKeyID(signature: 0x494e_4b43, id: action.rawValue),
+            GetApplicationEventTarget(), 0, &reference)
         guard status == noErr, let reference else {
-            throw PeerError.needsAction("“\(action.title)”的 \(shortcut.label) 无法注册，可能已被系统或其他应用占用。请换一个组合。")
+            throw PeerError.needsAction(
+                "“\(action.title)”的 \(shortcut.label) 无法注册，可能已被系统或其他应用占用。请换一个组合。")
         }
         // Register the replacement first; failure must not remove the working shortcut.
         if let old = keys.updateValue(reference, forKey: action) { UnregisterEventHotKey(old) }
@@ -166,8 +196,9 @@ final class GlobalShortcuts: ObservableObject {
         var failures: [String] = []
         for action in ShortcutAction.allCases where action.isGlobal && keys[action] == nil {
             guard let shortcut = bindings[action] else { continue }
-            do { try register(shortcut, for: action) }
-            catch { failures.append(error.localizedDescription) }
+            do { try register(shortcut, for: action) } catch {
+                failures.append(error.localizedDescription)
+            }
         }
         if !failures.isEmpty { message = failures.joined(separator: "\n") }
     }

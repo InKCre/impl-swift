@@ -16,7 +16,8 @@ enum InKCreApplication {
 }
 
 @MainActor
-final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserInterfaceValidations {
+final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserInterfaceValidations
+{
     let context: PeerHostContext
     let runtime: BundledExtensionRuntime
     let capture: CaptureExtension
@@ -25,7 +26,12 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     enum Page: Hashable {
         case capture, records, files, peer
         var title: String {
-            switch self { case .capture: "采集"; case .records: "记录"; case .files: "本地文件"; case .peer: "Peer 与连接" }
+            switch self {
+            case .capture: "采集"
+            case .records: "记录"
+            case .files: "本地文件"
+            case .peer: "Peer 与连接"
+            }
         }
     }
     @Published var columnVisibility = NavigationSplitViewVisibility.all
@@ -39,7 +45,8 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     private(set) var mainWindow: PeerMainWindow?
     override convenience init() {
         let identity = Bundle.main.bundleIdentifier ?? "dev.inkcre.capture"
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let directory = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(identity)
         self.init(context: PeerHostContext(identity: identity, directory: directory))
     }
@@ -55,10 +62,15 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         capture.navigate = { [weak self] page in
             self?.page = page == .capture ? .capture : .records
         }
-        localFiles.present = { [weak self] in self?.page = .files; self?.showMain() }
+        localFiles.present = { [weak self] in
+            self?.page = .files
+            self?.showMain()
+        }
         localFiles.model.editConnection = { [weak self] in self?.editConnection(self?.connection) }
         capture.showPreferences = { [weak self] in self?.showSettings(.capture) }
-        capture.editConnection = { [weak self] target, completion in self?.editConnection(target, onFinished: completion) }
+        capture.editConnection = { [weak self] target, completion in
+            self?.editConnection(target, onFinished: completion)
+        }
     }
     private var presence: Task<Void, Never>?
     @Published var connectionIssue: String?
@@ -122,24 +134,31 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         }
         let app = addMenu("InKCre")
         app.addItem(
-            withTitle: "关于 InKCre", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            withTitle: "关于 InKCre",
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: "")
-        app.addItem(withTitle: "设置…", action: #selector(showPreferences(_:)), keyEquivalent: ",").target = self
-        app.addItem(withTitle: "Peer 连接…", action: #selector(showConnection(_:)), keyEquivalent: "").target =
+        app.addItem(withTitle: "设置…", action: #selector(showPreferences(_:)), keyEquivalent: ",")
+            .target = self
+        app.addItem(withTitle: "Peer 连接…", action: #selector(showConnection(_:)), keyEquivalent: "")
+            .target =
             self
-        app.addItem(withTitle: "开源许可与致谢…", action: #selector(showLicenses(_:)), keyEquivalent: "").target =
+        app.addItem(withTitle: "开源许可与致谢…", action: #selector(showLicenses(_:)), keyEquivalent: "")
+            .target =
             self
         app.addItem(.separator())
-        app.addItem(withTitle: "隐藏 InKCre", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(
+            withTitle: "隐藏 InKCre", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let others = app.addItem(
             withTitle: "隐藏其他应用", action: #selector(NSApplication.hideOtherApplications(_:)),
             keyEquivalent: "h")
         others.keyEquivalentModifierMask = [.command, .option]
         app.addItem(
-            withTitle: "显示全部", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+            withTitle: "显示全部", action: #selector(NSApplication.unhideAllApplications(_:)),
+            keyEquivalent: "")
         app.addItem(.separator())
         app.addItem(
-            withTitle: "退出 InKCre", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            withTitle: "退出 InKCre", action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q")
         let edit = addMenu("编辑")
         for (title, action, key) in [
             ("撤销", Selector(("undo:")), "z"), ("剪切", #selector(NSText.cut(_:)), "x"),
@@ -155,18 +174,25 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
             withTitle: "显示/隐藏侧栏", action: #selector(NSSplitViewController.toggleSidebar(_:)),
             keyEquivalent: "s"
         ).keyEquivalentModifierMask = [.command, .option]
-        view.addItem(withTitle: "进入全屏", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
-            .keyEquivalentModifierMask = [.command, .control]
+        view.addItem(
+            withTitle: "进入全屏", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f"
+        )
+        .keyEquivalentModifierMask = [.command, .control]
         let window = addMenu("窗口")
-        window.addItem(withTitle: "显示主窗口", action: #selector(showMain), keyEquivalent: "0").target = self
+        window.addItem(withTitle: "显示主窗口", action: #selector(showMain), keyEquivalent: "0").target =
+            self
         window.addItem(
-            withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        window.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
-        window.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+            withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"
+        )
+        window.addItem(
+            withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        window.addItem(
+            withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         window.addItem(withTitle: "扩展设置…", action: #selector(showExtensions(_:)), keyEquivalent: "")
             .target = self
         window.addItem(
-            withTitle: "前置全部窗口", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+            withTitle: "前置全部窗口", action: #selector(NSApplication.arrangeInFront(_:)),
+            keyEquivalent: "")
         NSApp.windowsMenu = window
         NSApp.mainMenu = main
     }
@@ -176,7 +202,10 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     @objc private func showConnection(_ sender: Any?) { showSettings(.connection) }
 
     func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
-        if [#selector(showPreferences(_:)), #selector(showConnection(_:)), #selector(showExtensions(_:))].contains(item.action) {
+        if [
+            #selector(showPreferences(_:)), #selector(showConnection(_:)),
+            #selector(showExtensions(_:)),
+        ].contains(item.action) {
             return manager?.attachedSheet != nil || capture.canOpenSettings
         }
         return true
@@ -190,8 +219,9 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         NSApp.activate(ignoringOtherApps: true)
         manager?.makeKeyAndOrderFront(nil)
         Task {
-            do { try await reloadConnections() }
-            catch { connectionIssue = error.localizedDescription }
+            do { try await reloadConnections() } catch {
+                connectionIssue = error.localizedDescription
+            }
         }
     }
 
@@ -237,23 +267,25 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         guard !changingConnection, capture.canOpenSettings else { return }
         showSettings(.connection)
         guard let manager, manager.attachedSheet == nil else { return }
-        let sheet = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
+        let sheet = NSWindow(
+            contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
         let close: @MainActor @Sendable () -> Void = { [weak manager, weak sheet] in
             guard let manager, let sheet else { return }
             manager.endSheet(sheet)
             sheet.orderOut(nil)
         }
-        let content = NSHostingView(rootView: PeerConnectionEditor(
-            settings: context.connections, credentials: context.credentials,
-            target: target, saveTitle: onFinished == nil ? "保存" : "保存并返回采集", onCancel: close,
-            onSaved: { [weak self] target in
-                self?.changingConnection = true
-                Task {
-                    await self?.connectionDidChange(target)
-                    self?.changingConnection = false
-                    close()
-                }
-            }))
+        let content = NSHostingView(
+            rootView: PeerConnectionEditor(
+                settings: context.connections, credentials: context.credentials,
+                target: target, saveTitle: onFinished == nil ? "保存" : "保存并返回采集", onCancel: close,
+                onSaved: { [weak self] target in
+                    self?.changingConnection = true
+                    Task {
+                        await self?.connectionDidChange(target)
+                        self?.changingConnection = false
+                        close()
+                    }
+                }))
         sheet.contentView = content
         sheet.setContentSize(content.fittingSize)
         manager.beginSheet(sheet) { [weak manager] _ in
@@ -277,7 +309,9 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         alert.runModal()
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool)
+        -> Bool
+    {
         showMain()
         return false
     }

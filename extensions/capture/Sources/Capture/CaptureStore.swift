@@ -9,7 +9,8 @@ private final class SQLiteConnection: @unchecked Sendable {
     init(url: URL) throws {
         var database: OpaquePointer?
         let status = sqlite3_open_v2(
-            url.path, &database, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil
+            url.path, &database, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
+            nil
         )
         guard status == SQLITE_OK, let database else {
             if let database { sqlite3_close(database) }
@@ -75,7 +76,10 @@ public actor CaptureStore {
     }
 
     public func pendingRecords() throws -> [CaptureRecord] {
-        try records(query: "SELECT body FROM records WHERE json_extract(CAST(body AS TEXT), '$.state') IN ('pending','unknown')")
+        try records(
+            query:
+                "SELECT body FROM records WHERE json_extract(CAST(body AS TEXT), '$.state') IN ('pending','unknown')"
+        )
     }
 
     private func records(query: String) throws -> [CaptureRecord] {
@@ -221,7 +225,7 @@ public actor CaptureStore {
 
     public func updateWebAddress(_ id: UUID, address: String) throws -> CaptureRecord {
         guard var record = try record(id), record.state == .confirmed, var target = record.target,
-              let url = URL(string: address.trimmingCharacters(in: .whitespacesAndNewlines))
+            let url = URL(string: address.trimmingCharacters(in: .whitespacesAndNewlines))
         else { throw PeerError.invalid("请输入有效的 Web 地址，且仅为已收入记录配置地址。") }
         // The display address can change; the frozen database destination and receipt cannot.
         target.webURL = url
@@ -248,7 +252,8 @@ public actor CaptureStore {
 
     private func save(_ record: CaptureRecord) throws {
         let encoded = try CaptureJSON.encode(record)
-        try database.statement("INSERT OR REPLACE INTO records(id,body) VALUES (?,?)") { statement in
+        try database.statement("INSERT OR REPLACE INTO records(id,body) VALUES (?,?)") {
+            statement in
             sqlite3_bind_text(statement, 1, record.id.uuidString, -1, transient)
             let result = encoded.withUnsafeBytes { bytes in
                 sqlite3_bind_blob(statement, 2, bytes.baseAddress, Int32(bytes.count), transient)

@@ -9,7 +9,9 @@ let package = Package(
     ],
     dependencies: [.package(url: "https://github.com/vapor/postgres-nio.git", from: "1.32.0")],
     targets: [
-        .target(name: "PeerCore", dependencies: [.product(name: "PostgresNIO", package: "postgres-nio")]),
+        .target(
+            name: "PeerCore", dependencies: [.product(name: "PostgresNIO", package: "postgres-nio")]
+        ),
         .target(name: "PeerMacUI", dependencies: ["PeerCore"]),
     ]
 )

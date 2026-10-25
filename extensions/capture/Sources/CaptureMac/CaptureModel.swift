@@ -72,10 +72,13 @@ final class CaptureModel: ObservableObject {
     private var actions: [UUID: Task<Void, Never>] = [:]
     private var stopping = false
 
-    init(directory: URL, identity: String, connections: ConnectionSettings? = nil,
-         client: any CaptureTransport = CaptureClient()) throws {
+    init(
+        directory: URL, identity: String, connections: ConnectionSettings? = nil,
+        client: any CaptureTransport = CaptureClient()
+    ) throws {
         self.connections =
-            connections ?? ConnectionSettings(url: directory.appendingPathComponent("connection.json"))
+            connections
+            ?? ConnectionSettings(url: directory.appendingPathComponent("connection.json"))
         shortcuts = try GlobalShortcuts()
         store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
         credentials = CredentialStore(service: "\(identity).connections")
@@ -281,18 +284,23 @@ final class CaptureModel: ObservableObject {
         guard let connection else {
             let draftID = draft.id
             let owner = editorOwner
-            editConnection?(nil, { [weak self] in
-                guard let self, !self.stopping, self.draft.id == draftID else { return }
-                self.editorOwner = owner
-                self.captureNotice = self.connection == nil
-                    ? "连接信息库后即可收入，也可以继续编辑。"
-                    : "连接已配置，请确认内容后点击收入。"
-                self.revealEditor()
-            })
+            editConnection?(
+                nil,
+                { [weak self] in
+                    guard let self, !self.stopping, self.draft.id == draftID else { return }
+                    self.editorOwner = owner
+                    self.captureNotice =
+                        self.connection == nil
+                        ? "连接信息库后即可收入，也可以继续编辑。"
+                        : "连接已配置，请确认内容后点击收入。"
+                    self.revealEditor()
+                })
             return
         }
         // An input method owns Return until its marked text is committed.
-        if let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.hasMarkedText() { return }
+        if let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.hasMarkedText() {
+            return
+        }
         submitting = true
         saveTask?.cancel()
         perform { [self] in
@@ -435,8 +443,8 @@ final class CaptureModel: ObservableObject {
 
     func updatePassword(_ password: String, for record: CaptureRecord) async throws {
         guard !password.isEmpty,
-              let current = try await store.record(record.id),
-              let target = current.target, current.state != .draft, current.state != .confirmed
+            let current = try await store.record(record.id),
+            let target = current.target, current.state != .draft, current.state != .confirmed
         else { throw PeerError.invalid("这条记录已变更，请关闭后重新查看。") }
         try credentials.save(password, for: target.id)
         try await store.retry(current.id)
@@ -444,7 +452,9 @@ final class CaptureModel: ObservableObject {
         perform { [self] in await sendPending(force: true) }
     }
 
-    func updateWebAddress(_ address: String, for record: CaptureRecord) async throws -> CaptureRecord {
+    func updateWebAddress(_ address: String, for record: CaptureRecord) async throws
+        -> CaptureRecord
+    {
         let updated = try await store.updateWebAddress(record.id, address: address)
         try await refresh()
         return updated
@@ -477,7 +487,9 @@ final class CaptureModel: ObservableObject {
     }
 
     func resultURL(for record: CaptureRecord) -> URL? {
-        guard let result = record.result, result.availability == .available, let target = record.target else { return nil }
+        guard let result = record.result, result.availability == .available,
+            let target = record.target
+        else { return nil }
         let base = target.webURL ?? (connection?.peerID == target.peerID ? connection?.webURL : nil)
         guard var url = base else { return nil }
         for part in ["info-base", "list", "blocks", String(result.rootBlockID), "content"] {

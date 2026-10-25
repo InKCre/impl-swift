@@ -16,7 +16,9 @@ final class CapturePanel: NSPanel {
 }
 
 @MainActor
-public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate, NSUserInterfaceValidations {
+public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate,
+    NSUserInterfaceValidations
+{
     public let descriptor = CaptureClient.descriptor
     private let context: PeerHostContext
     public init(context: PeerHostContext) {
@@ -73,9 +75,11 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
 
     public func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         guard canChangeCaptureContext, let model, !model.submitting,
-              model.shortcuts.recording == nil else { return false }
+            model.shortcuts.recording == nil
+        else { return false }
         if item.action == #selector(performShortcut(_:)), let item = item as? NSMenuItem,
-           let action = ShortcutAction(rawValue: UInt32(item.tag)) {
+            let action = ShortcutAction(rawValue: UInt32(item.tag))
+        {
             return canPerform(action, in: NSApp.keyWindow)
         }
         return model.error == nil && model.removalRequest == nil
@@ -113,7 +117,9 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
             model.dismissQuickCapture = { [weak self] in self?.hide() }
             model.showMain = { [weak self] in self?.showMain() }
             model.showQuick = { [weak self] in self?.showQuick() }
-            model.editConnection = { [weak self] target, completion in self?.editConnection?(target, completion) }
+            model.editConnection = { [weak self] target, completion in
+                self?.editConnection?(target, completion)
+            }
             model.takeScreenshot = { [weak self] in self?.screenshot() }
             model.shortcuts.isCaptureWindow = { [weak panel, weak mainWindow] window in
                 window === panel || window === mainWindow
@@ -162,22 +168,27 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         }
         menu.addItem(.separator())
         menu.addItem(
-            withTitle: "退出 InKCre", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            withTitle: "退出 InKCre", action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q")
         item.menu = menu
         statusItem = item
 
         let commands = NSMenuItem(title: "采集", action: nil, keyEquivalent: "")
         let capture = NSMenu(title: "采集")
-        capture.addItem(withTitle: "新想法", action: #selector(newThought), keyEquivalent: "n").target = self
+        capture.addItem(withTitle: "新想法", action: #selector(newThought), keyEquivalent: "n")
+            .target = self
         for action in ShortcutAction.allCases {
-            let item = NSMenuItem(title: action.title, action: #selector(performShortcut(_:)), keyEquivalent: "")
+            let item = NSMenuItem(
+                title: action.title, action: #selector(performShortcut(_:)), keyEquivalent: "")
             item.target = self
             item.tag = Int(action.rawValue)
             capture.addItem(item)
         }
         capture.addItem(.separator())
-        capture.addItem(withTitle: "采集记录", action: #selector(showQueue), keyEquivalent: "").target = self
-        capture.addItem(withTitle: "采集设置…", action: #selector(showSettings), keyEquivalent: "").target = self
+        capture.addItem(withTitle: "采集记录", action: #selector(showQueue), keyEquivalent: "").target =
+            self
+        capture.addItem(withTitle: "采集设置…", action: #selector(showSettings), keyEquivalent: "")
+            .target = self
         commands.submenu = capture
         NSApp.mainMenu?.insertItem(commands, at: 1)
         commandItem = commands
@@ -191,9 +202,14 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
     }
 
     private func canPerform(_ action: ShortcutAction, in window: NSWindow?) -> Bool {
-        guard canChangeCaptureContext, let model, model.shortcuts.recording == nil else { return false }
+        guard canChangeCaptureContext, let model, model.shortcuts.recording == nil else {
+            return false
+        }
         let quick = window === panel && model.editorOwner == .quick
-        let editor = quick || (showingCapturePage && window === mainWindow && model.pane == .capture && model.editorOwner == .main)
+        let editor =
+            quick
+            || (showingCapturePage && window === mainWindow && model.pane == .capture
+                && model.editorOwner == .main)
         return model.canPerform(action, isEditor: editor, isQuickPanel: quick)
     }
 
@@ -222,7 +238,9 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         let bundleID = application.bundleIdentifier
         selectionTask?.cancel()
         selectionTask = Task {
-            let snapshot = await Task.detached { SelectedText.read(pid: pid, applicationID: bundleID) }.value
+            let snapshot = await Task.detached {
+                SelectedText.read(pid: pid, applicationID: bundleID)
+            }.value
             guard model.selectionRequest == request,
                 NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
             else { return }
@@ -238,14 +256,17 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
             else { return }
             if let text {
                 guard
-                    await Task.detached(operation: { SelectedText.isCurrent(pid: pid, snapshot: snapshot) })
-                        .value,
+                    await Task.detached(operation: {
+                        SelectedText.isCurrent(pid: pid, snapshot: snapshot)
+                    })
+                    .value,
                     model.selectionRequest == request,
                     NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
                 else { return }
                 await model.receive(
                     CapturePayload(
-                        entry: .selection, origin: snapshot.origin, materials: [Material(text: text)]),
+                        entry: .selection, origin: snapshot.origin,
+                        materials: [Material(text: text)]),
                     request: request
                 )
             } else {
@@ -308,7 +329,8 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
                 model.perform {
                     await model.receive(
                         CapturePayload(
-                            entry: .screenshot, materials: [Material(image: data, mimeType: "image/png")]),
+                            entry: .screenshot,
+                            materials: [Material(image: data, mimeType: "image/png")]),
                         request: request
                     )
                 }
