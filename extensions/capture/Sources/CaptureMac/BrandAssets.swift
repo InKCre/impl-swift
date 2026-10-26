@@ -1,11 +1,16 @@
 import AppKit
+import InKCreLogoAssets
 
 @MainActor
 enum BrandAssets {
-    static let lightMark = image("MarkLight", size: 24)
-    static let darkMark = image("MarkDark", size: 24)
+    static let lightMark = image(
+        "inkcre-original-transparent-24px@2x", subdirectory: "png/2x/original-transparent", size: 24
+    )
+    static let darkMark = image(
+        "inkcre-reverse-transparent-24px@2x", subdirectory: "png/2x/reverse-transparent", size: 24)
     static let menuIcon: NSImage = {
-        let icon = image("MenuTemplate", size: 20)
+        let icon = image(
+            "inkcre-black-transparent-20px@2x", subdirectory: "png/2x/black-transparent", size: 20)
         icon.isTemplate = true
         icon.accessibilityDescription = "InKCre"
         return icon
@@ -16,17 +21,18 @@ enum BrandAssets {
         if Bundle.main.bundleURL.pathExtension == "app" {
             guard
                 let url = Bundle.main.url(
-                    forResource: "InKCreCapture_CaptureMac", withExtension: "bundle"),
+                    forResource: "InKCreUI_InKCreLogoAssets", withExtension: "bundle"),
                 let bundle = Bundle(url: url)
-            else { preconditionFailure("Missing packaged InKCre resources") }
+            else { preconditionFailure("Missing packaged InKCre Logo assets") }
             return bundle
         }
-        return Bundle.module
+        return InKCreLogoAssets.bundle
     }()
 
-    private static func image(_ name: String, size: CGFloat) -> NSImage {
+    private static func image(_ name: String, subdirectory: String, size: CGFloat) -> NSImage {
         guard
-            let url = resources.url(forResource: name, withExtension: "png", subdirectory: "Brand"),
+            let url = resources.url(
+                forResource: name, withExtension: "png", subdirectory: subdirectory),
             let image = NSImage(contentsOf: url)
         else { preconditionFailure("Missing brand resource: \(name)") }
         image.size = NSSize(width: size, height: size)

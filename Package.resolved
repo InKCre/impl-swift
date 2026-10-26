@@ -1,5 +1,5 @@
 {
-  "originHash" : "5f09cb124b915dafd85dbbdc3963e066f1ead16665778dfb8bd2759d053cb364",
+  "originHash" : "0a4331c716f6315492dafb5e2f8d12e5cb5ec29e9cb08562420b8a9a237b33f3",
   "pins" : [
     {
       "identity" : "postgres-nio",
@@ -125,6 +125,14 @@
       "state" : {
         "revision" : "e7f85f4d3dd91ca9a1e94d3328aa1ed5120a8c0f",
         "version" : "2.14.3"
+      }
+    },
+    {
+      "identity" : "ui",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/InKCre/ui.git",
+      "state" : {
+        "revision" : "15487b91b68ee3999ee6302276f621d0374757e6"
       }
     }
   ],

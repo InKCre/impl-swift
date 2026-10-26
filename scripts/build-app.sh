@@ -28,6 +28,7 @@ mkdir -p "$app/Contents/Resources"
 cp "$bin_path/InKCre" "$app/Contents/MacOS/InKCre"
 cp -R "$bin_path/InKCreCapture_Capture.bundle" "$app/Contents/Resources/"
 cp -R "$bin_path/InKCreCapture_CaptureMac.bundle" "$app/Contents/Resources/"
+cp -R "$bin_path/InKCreUI_InKCreLogoAssets.bundle" "$app/Contents/Resources/"
 cp -R "$bin_path/InKCreLocalFiles_LocalFiles.bundle" "$app/Contents/Resources/"
 for resource in "$bin_path"/swift-*.bundle; do
   [[ -d "$resource" ]] || continue

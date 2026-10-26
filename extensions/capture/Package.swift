@@ -7,7 +7,12 @@ let package = Package(
         .library(name: "Capture", targets: ["Capture"]),
         .library(name: "CaptureMac", targets: ["CaptureMac"]),
     ],
-    dependencies: [.package(path: "../../Packages/PeerCore")],
+    dependencies: [
+        .package(path: "../../Packages/PeerCore"),
+        .package(
+            url: "https://github.com/InKCre/ui.git",
+            revision: "15487b91b68ee3999ee6302276f621d0374757e6"),
+    ],
     targets: [
         .systemLibrary(name: "CSQLite"),
         .target(
@@ -19,6 +24,7 @@ let package = Package(
             dependencies: [
                 "Capture", .product(name: "PeerCore", package: "PeerCore"),
                 .product(name: "PeerMacUI", package: "PeerCore"),
+                .product(name: "InKCreLogoAssets", package: "ui"),
             ], resources: [.copy("Resources/Brand")]),
     ]
 )
