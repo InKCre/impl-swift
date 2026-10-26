@@ -1,0 +1,18 @@
+BetterShot
+上游：https://github.com/KartikLabhshetwar/better-shot
+作者：Kartik Labhshetwar 及 BetterShot 贡献者
+固定版本：7b7d00778fd972cf672242771d7a25870dd301b4
+许可：BSD-3-Clause；完整上游 LICENSE 保存在同目录。
+
+提取文件：Sources/Capture/RegionSelectionOverlay.swift、RegionGeometry.swift、FrozenScreenFrame.swift。
+本地位置：Sources/CaptureMac/Vendor/BetterShot/。
+
+InKCre 保留选区绘制、移动／八点缩放、几何转换和冻结图裁剪实现。
+修改：删除宿主偏好、控制拖拽、前次选区和系统窗口截取分支；通过显式冻结帧输入接入 Capture；
+增加原生确认／取消按钮、中文与辅助功能说明、单次完成和停用清理；
+冻结背景与遮罩改为 AppKit 绘制，以便离屏验证与实际显示使用同一视图，并增加黑白描边；裁剪 PNG 返回内存数据而非写文件。
+RegionOverlayTests.swift 中的几何与冻结像素断言改编自上游 RegionGeometryCheck.swift、FrozenScreenFrameCheck.swift。
+
+未引入 BetterShot 的 Cap 3D／录屏编辑、MacShot 滚动截屏、上传、更新或其他应用实现，
+上述三个文件仅依赖 Apple 框架。本目录不是完整 BetterShot 应用；根 LICENSE 的其他组件提示保留原文。
+BetterShot 名称仅用于来源致谢，不表示上游对 InKCre 的认可、合作或背书。

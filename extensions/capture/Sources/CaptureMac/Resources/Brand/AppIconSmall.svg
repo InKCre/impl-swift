@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+<title>InKCre macOS application icon, small sizes</title>
+<desc>Original optical-32 mark on a 28px white tile with transparent outer margins.</desc>
+<g transform="translate(2 2) scale(0.875)">
+<rect width="32" height="32" rx="6" fill="#FFFFFF"/>
+<path d="M4 11h9v9H4Z M5 12h7v7H5Z" fill="#000000" fill-rule="evenodd"/>
+<rect x="7" y="14" width="3" height="3" fill="#000000"/>
+<rect x="20" y="3" width="8" height="8" fill="#000000"/>
+<line x1="13" y1="15.5" x2="16" y2="15.5" stroke="#000000"/>
+<line x1="16.5" y1="16" x2="16.5" y2="9" stroke="#000000"/>
+<line x1="16" y1="8.5" x2="20" y2="8.5" stroke="#000000"/>
+<rect x="20" y="20" width="8" height="8" fill="#808080"/>
+</g>
+</svg>
