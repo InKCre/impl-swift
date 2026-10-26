@@ -132,7 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/InKCre/ui.git",
       "state" : {
-        "revision" : "15487b91b68ee3999ee6302276f621d0374757e6"
+        "revision" : "e5858e1092617eb5acf6588460e597fbc43c662a",
+        "version" : "2.6.0"
       }
     }
   ],

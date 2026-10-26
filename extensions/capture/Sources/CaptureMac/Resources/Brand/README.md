@@ -1,6 +1,6 @@
 # InKCre Mac 标识资源
 
-采集面板和菜单栏标识来自 InKCre UI 的 SwiftPM product `InKCreLogoAssets`，由 `extensions/capture/Package.swift` 声明 Git 依赖，并随应用的 `Package.resolved` 锁定解析结果。[UI PR #67](https://github.com/InKCre/ui/pull/67) 已合并；当前固定 revision 与该合并提交的源码树相同，不表示已有正式 Swift 版本发行。
+采集面板和菜单栏标识来自 InKCre UI 的 SwiftPM product `InKCreLogoAssets`，由 `extensions/capture/Package.swift` 声明 [UI `2.6.0`](https://github.com/InKCre/ui/tree/2.6.0) 的 exact 依赖，并随应用的 `Package.resolved` 锁定解析提交。升级时同步修改版本约束与锁文件，不跟随移动分支。
 
 `BrandAssets` 直接使用该 product 提供的 PNG，主题选择、逻辑尺寸与 `NSImage.isTemplate` 由原生界面负责，不在本仓库另存面板或菜单 PNG：
 
@@ -12,7 +12,7 @@
 
 普通 SwiftPM 运行使用公开的 `InKCreLogoAssets.bundle`。自组装应用由 `scripts/build-app.sh` 将 `InKCreUI_InKCreLogoAssets.bundle` 放入 `.app/Contents/Resources`，`BrandAssets` 在应用内只从该嵌入位置加载，缺失时直接报错，不回退到本机 `.build`。普通构建不需要解压 ZIP、执行资源生成器或安装 Web 依赖。
 
-更新 UI 依赖时阅读该 revision 的 Logo 说明，按逻辑尺寸选择几何与像素倍率，并更新解析锁定；24 pt @2x 的文件是 48 × 48 物理像素，不能改选常规 48 px 的标准几何。资源嵌入验收应将 `.app` 移出构建目录，确认实际界面仍能显示标识。
+更新 UI 依赖时阅读该版本的 Logo 说明，按逻辑尺寸选择几何与像素倍率，并更新解析锁定；24 pt @2x 的文件是 48 × 48 物理像素，不能改选常规 48 px 的标准几何。资源嵌入验收应将 `.app` 移出构建目录，确认实际界面仍能显示标识。
 
 应用图标继续由本仓库维护。当前几何来自原 `InKCre-logo-pack-20261021`，原始来源与固定版本见同目录 `PROVENANCE.json`；该历史来源记录不承担运行时 SwiftPM 依赖的版本锁定。
 

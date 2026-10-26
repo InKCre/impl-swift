@@ -78,7 +78,7 @@ PDF 读取文字层；DOCX 读取主文档与表格文字，遗漏脚注、批�
 
 Capture 的精确 manifest 随签名应用交付，格式为 `swift_bundled`。当前不实现动态插件下载／热加载，其他版本需更新应用。扩展版本与应用版本分开，不声称已有 Registry 原生 Swift 下载通道。
 
-菜单栏 template 图标和明暗面板标识通过 InKCre UI 的 SwiftPM product `InKCreLogoAssets` 取得，Git revision 当前固定到尚未发布的 UI PR #67 候选。SwiftPM 解析资源，打包脚本将资源 bundle 嵌入最终 `.app`，普通构建无需解压 ZIP、安装 Web 依赖或运行渲染器。应用 ICNS 继续由本仓库维护，在原标志外使用 Mac 专用圆角底板和透明边距，避免通用白底画布满版导致 Dock 尺寸过大。依赖与资源路径、原始出处、小尺寸/高 DPI 几何与图标再生步骤见 [Mac 标识资源](extensions/capture/Sources/CaptureMac/Resources/Brand/README.md)。
+菜单栏 template 图标和明暗面板标识通过 InKCre UI 的 SwiftPM product `InKCreLogoAssets` 取得，当前依赖正式版本 `2.6.0`，使用 exact 约束并由 `Package.resolved` 锁定提交。SwiftPM 解析资源，打包脚本将资源 bundle 嵌入最终 `.app`，普通构建无需解压 ZIP、安装 Web 依赖或运行渲染器。应用 ICNS 继续由本仓库维护，在原标志外使用 Mac 专用圆角底板和透明边距，避免通用白底画布满版导致 Dock 尺寸过大。依赖与资源路径、原始出处、小尺寸/高 DPI 几何与图标再生步骤见 [Mac 标识资源](extensions/capture/Sources/CaptureMac/Resources/Brand/README.md)。
 
 发布构建显式设置稳定 `BUNDLE_ID` 与 `SIGNING_IDENTITY`；可用 `NOTARY_PROFILE` 指定已配置的 notarytool Keychain profile。脚本不会寻找或创建发布凭据。发布后保持 bundle ID 与签名团队不变，以保留系统权限、Keychain 和待办身份。
 

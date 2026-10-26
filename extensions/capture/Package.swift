@@ -9,9 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../../Packages/PeerCore"),
-        .package(
-            url: "https://github.com/InKCre/ui.git",
-            revision: "15487b91b68ee3999ee6302276f621d0374757e6"),
+        .package(url: "https://github.com/InKCre/ui.git", exact: "2.6.0"),
     ],
     targets: [
         .systemLibrary(name: "CSQLite"),
