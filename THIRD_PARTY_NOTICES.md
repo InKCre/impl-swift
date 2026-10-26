@@ -8,7 +8,7 @@ BetterShot 由 Kartik Labhshetwar 及贡献者开发。CaptureMac/Vendor/BetterS
 
 PostgresNIO 及传递依赖使用各自许可。Package.resolved 固定来源与修订；scripts/collect-licenses.py 从实际解析的源码收集完整 LICENSE／NOTICE，包括 BoringSSL 的内嵌许可。缺失许可会使打包失败。生成结果随应用保存在 Contents/Resources/THIRD_PARTY_NOTICES.txt，可从应用菜单打开。
 
-用户提供的 InKCre logo pack 用于本项目品牌；代码 MIT 许可不授予 InKCre 商标或品牌资源的使用权。品牌目录保留出处记录。
+InKCre UI 的 `InKCreLogoAssets` 用于本项目品牌；代码 MIT 许可不授予 InKCre 商标或品牌资源的使用权。打包从锁定的 UI checkout 收集 `assets/logo/README.zh-CN.md` 与 `PROVENANCE.json`，保留资源来源和使用边界；任一文件缺失仍使打包失败。其他依赖继续要求完整许可。应用图标的历史来源另保留于本机品牌目录。
 
 [SwiftSoup 2.14.3](https://github.com/scinfu/SwiftSoup/tree/2.14.3)（e7f85f4d3dd91ca9a1e94d3328aa1ed5120a8c0f）用于本地 HTML 文字解析，使用 MIT。构建收集上游完整 LICENSE，保留原 jsoup 作者与 Swift port 作者署名。
 

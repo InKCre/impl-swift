@@ -1,6 +1,6 @@
 # InKCre Mac 标识资源
 
-采集面板和菜单栏标识来自 InKCre UI 的 SwiftPM product `InKCreLogoAssets`，由 `extensions/capture/Package.swift` 声明 Git 依赖，并随应用的 `Package.resolved` 锁定解析结果。当前 revision 指向尚未发布的 [UI PR #67](https://github.com/InKCre/ui/pull/67) 候选，用于接入验收，不表示已有正式 Swift 版本发行。
+采集面板和菜单栏标识来自 InKCre UI 的 SwiftPM product `InKCreLogoAssets`，由 `extensions/capture/Package.swift` 声明 Git 依赖，并随应用的 `Package.resolved` 锁定解析结果。[UI PR #67](https://github.com/InKCre/ui/pull/67) 已合并；当前固定 revision 与该合并提交的源码树相同，不表示已有正式 Swift 版本发行。
 
 `BrandAssets` 直接使用该 product 提供的 PNG，主题选择、逻辑尺寸与 `NSImage.isTemplate` 由原生界面负责，不在本仓库另存面板或菜单 PNG：
 

@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 for script in scripts/*.sh; do
     bash -n "$script"
 done
+python3 -B -m unittest discover -s scripts/tests
 git ls-files --cached --others --exclude-standard -z -- \
     Package.swift 'Sources/**/*.swift' 'Tests/**/*.swift' \
     'Packages/**/*.swift' 'extensions/**/*.swift' \

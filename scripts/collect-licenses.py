@@ -13,6 +13,9 @@ for pin in json.loads((root / "Package.resolved").read_text())["pins"]:
     checkout = root / ".build/checkouts" / pin["identity"]
     files = sorted(p for p in checkout.rglob("*") if p.is_file() and
                    p.name.upper().startswith(("LICENSE", "LICENCE", "NOTICE", "COPYING")))
+    if pin["location"] == "https://github.com/InKCre/ui.git":
+        # 本项目品牌资源保留来源与使用边界，不把代码 MIT 许可扩展为品牌授权。
+        files += [checkout / "assets/logo/README.zh-CN.md", checkout / "assets/logo/PROVENANCE.json"]
     if not files:
         raise SystemExit(f"Missing license for {pin['identity']}")
     parts.append(f"{pin['identity']} {pin['state'].get('version', '')}\n{pin['location']}\nrevision {pin['state']['revision']}")
