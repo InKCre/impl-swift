@@ -99,11 +99,13 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
                 do {
                     try await reloadConnections()
                     if let target = connection {
-                        _ = try await PeerDatabase.shared.register(
+                        try await PeerDatabase.shared.register(
                             target, password: context.credentials.read(for: target.id))
                     }
                     connectionIssue = nil
                 } catch { connectionIssue = PeerDatabase.failure(error).localizedDescription }
+                let failures = await PeerDatabase.shared.renewLeases()
+                if let id = connection?.id, let failure = failures[id] { connectionIssue = failure }
                 updateStatus()
                 do { try await Task.sleep(for: .seconds(30)) } catch { break }
             }
@@ -237,6 +239,18 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         }
     }
 
+    func useBundledVersion(_ descriptor: NativeExtensionDescriptor, target: ConnectionTarget)
+        async throws
+    {
+        let connection = try await context.connections.resolve(target)
+        do {
+            try await PeerDatabase.shared.useBundledVersion(
+                descriptor, target: connection,
+                password: context.credentials.read(for: connection.id))
+            await localFiles.model.refresh()
+        } catch { throw PeerDatabase.failure(error) }
+    }
+
     private func updateStatus() { objectWillChange.send() }
 
     func reloadConnections() async throws {
@@ -316,14 +330,19 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         return false
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    private func stop(_ runtime: BundledExtensionRuntime) async throws {
+        await runtime.waitUntilIdle()
+        try await runtime.stop()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         presence?.cancel()
         Task {
             do {
-                await runtime.waitUntilIdle()
-                try await runtime.stop()
-                await filesRuntime.waitUntilIdle()
-                try await filesRuntime.stop()
+                async let captureStopped: Void = stop(runtime)
+                async let filesStopped: Void = stop(filesRuntime)
+                try await captureStopped
+                try await filesStopped
                 await presence?.value
                 await PeerDatabase.shared.shutdown()
                 sender.reply(toApplicationShouldTerminate: true)

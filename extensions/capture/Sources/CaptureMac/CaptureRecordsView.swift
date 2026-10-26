@@ -63,10 +63,7 @@ struct CaptureRecordsView: View {
                                         if record.state == .draft {
                                             Button("继续编辑") { model.resume(record) }
                                         } else if record.state == .confirmed {
-                                            if record.result?.availability == .deleted {
-                                                Text("共享内容已删除").font(.caption).foregroundStyle(
-                                                    .secondary)
-                                            } else if model.resultURL(for: record) == nil {
+                                            if model.resultURL(for: record) == nil {
                                                 Button("配置 Web 地址…") { webRecord = record }
                                             } else {
                                                 Button("打开") { model.openResult(record) }

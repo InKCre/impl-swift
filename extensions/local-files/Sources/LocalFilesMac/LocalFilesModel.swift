@@ -35,6 +35,7 @@ public final class LocalFilesModel: ObservableObject {
     private let context: PeerHostContext
     private var bindings: [DirectoryBinding] = []
     private var monitors: [String: Monitor] = [:]
+    private var prepared: Set<UUID> = []
     private var timer: Task<Void, Never>?
     private var recordsTask: Task<Void, Never>?
     private var textTask: Task<Void, Never>?
@@ -79,7 +80,7 @@ public final class LocalFilesModel: ObservableObject {
     }
     public func hasAccess(_ source: DirectorySource) -> Bool {
         guard let target else { return false }
-        return bindings.contains { $0.source == source.id && $0.target.peerID == target.peerID }
+        return bindings.contains { $0.source == source.id && $0.peerID == target.peerID }
     }
 
     public func start() throws {
@@ -87,6 +88,7 @@ public final class LocalFilesModel: ObservableObject {
             bindings = try JSONDecoder().decode(
                 [DirectoryBinding].self, from: Data(contentsOf: bindingURL))
         }
+        prepared.removeAll()
         running = true
         timer = Task {
             while !Task.isCancelled {
@@ -103,6 +105,9 @@ public final class LocalFilesModel: ObservableObject {
         actionTask?.cancel()
         refreshTask?.cancel()
         timer?.cancel()
+        recordsTask?.cancel()
+        textTask?.cancel()
+        for monitor in monitors.values { monitor.task?.cancel() }
         await actionTask?.value
         await refreshTask?.value
         await timer?.value
@@ -129,7 +134,8 @@ public final class LocalFilesModel: ObservableObject {
         sources = []
         records = []
         issue = nil
-        // A coalesced old refresh must settle before the new selection is refreshed.
+        // Cancel old reads before refreshing the new selection.
+        refreshTask?.cancel()
         await refreshTask?.value
         await refresh()
     }
@@ -152,8 +158,10 @@ public final class LocalFilesModel: ObservableObject {
         guard running else { return }
         loading = sources.isEmpty
         defer { loading = false }
+        let saved: ConnectionSettings.SavedConnections
         do {
-            let current = try await context.connections.load()
+            saved = try await context.connections.loadAll()
+            let current = saved.current
             if current != target {
                 recordsTask?.cancel()
                 selectedSource = nil
@@ -166,64 +174,85 @@ public final class LocalFilesModel: ObservableObject {
             issue = error.localizedDescription
             return
         }
-        var targets = Dictionary(
-            bindings.map { ($0.target.id, $0.target) }, uniquingKeysWith: { _, newer in newer })
-        if let target { targets[target.id] = target }
+        let targets = saved.connections.filter { connection in
+            connection.id == target?.id
+                || bindings.contains {
+                    $0.connectionID == connection.id && $0.peerID == connection.peerID
+                }
+        }
+        for binding in bindings
+        where !targets.contains(where: {
+            $0.id == binding.connectionID && $0.peerID == binding.peerID
+        }) {
+            await stopMonitor(binding.id)
+            statuses[binding.id] = "原目标连接不可用，请恢复该信息库的连接。"
+        }
         if target == nil {
             sources = []
             records = []
         }
-        for connection in targets.values {
-            guard running, !Task.isCancelled else { return }
-            do {
-                let client = try client(connection)
-                try await client.prepare()
-                let found = try await client.sources()
-                guard running, !Task.isCancelled else { return }
-                if target?.id == connection.id {
-                    let old = selectedSource
-                    sources = found
-                    selectedSource = found.contains(where: { $0.id == old }) ? old : found.first?.id
-                    issue = nil
-                }
-                for binding in bindings.filter({ $0.target.id == connection.id }) {
-                    guard let source = found.first(where: { $0.id == binding.source }),
-                        source.config.enabled
-                    else {
-                        await stopMonitor(binding.id)
-                        continue
-                    }
-                    if monitors[binding.id]?.source.config != source.config {
-                        await stopMonitor(binding.id)
-                    }
-                    if monitors[binding.id] == nil {
-                        do { try startMonitor(binding, source: source) } catch {
-                            statuses[binding.id] = error.localizedDescription
-                            continue
-                        }
-                    }
-                    if let monitor = monitors[binding.id], monitor.task == nil {
-                        let jobs = try await client.pendingScans(source)
-                        if !jobs.isEmpty || monitor.dirty { schedule(binding.id) }
-                    }
-                }
-                for source in found
-                where !bindings.contains(where: { $0.id == key(source.id, connection) }) {
-                    statuses[key(source.id, connection)] = "需要选择目录以恢复访问"
-                }
-            } catch {
-                let message = PeerDatabase.failure(error).localizedDescription
-                if target?.id == connection.id { issue = message }
-                for binding in bindings.filter({ $0.target.id == connection.id }) {
-                    await stopMonitor(binding.id)
-                    statuses[binding.id] = message
-                }
+        await withTaskGroup(of: Void.self) { group in
+            for connection in targets {
+                group.addTask { await self.refresh(connection) }
             }
         }
-        loadRecords()
     }
 
-    private func startMonitor(_ binding: DirectoryBinding, source: DirectorySource) throws {
+    private func refresh(_ connection: ConnectionTarget) async {
+        guard running, !Task.isCancelled else { return }
+        defer { if target?.id == connection.id { loading = false } }
+        do {
+            let client = try await client(connection)
+            try await prepare(client)
+            try await client.checkParticipation()
+            let found = try await client.sources()
+            guard running, !Task.isCancelled else { return }
+            if target?.id == connection.id {
+                let old = selectedSource
+                sources = found
+                selectedSource = found.contains(where: { $0.id == old }) ? old : found.first?.id
+                issue = nil
+                loadRecords()
+            }
+            for binding in bindings.filter({ $0.connectionID == connection.id }) {
+                guard let source = found.first(where: { $0.id == binding.source }),
+                    source.config.enabled
+                else {
+                    await stopMonitor(binding.id)
+                    continue
+                }
+                if monitors[binding.id]?.source.config != source.config {
+                    await stopMonitor(binding.id)
+                }
+                if monitors[binding.id] == nil {
+                    do { try startMonitor(binding, source: source, target: connection) } catch {
+                        statuses[binding.id] = error.localizedDescription
+                        continue
+                    }
+                }
+                if let monitor = monitors[binding.id], monitor.task == nil {
+                    let jobs = try await client.pendingScans(source)
+                    if !jobs.isEmpty || monitor.dirty { schedule(binding.id) }
+                }
+            }
+            for source in found
+            where !bindings.contains(where: { $0.id == key(source.id, connection) }) {
+                statuses[key(source.id, connection)] = "需要选择目录以恢复访问"
+            }
+        } catch {
+            guard running, !Task.isCancelled else { return }
+            let message = PeerDatabase.failure(error).localizedDescription
+            if target?.id == connection.id { issue = message }
+            for binding in bindings.filter({ $0.connectionID == connection.id }) {
+                await stopMonitor(binding.id)
+                statuses[binding.id] = message
+            }
+        }
+    }
+
+    private func startMonitor(
+        _ binding: DirectoryBinding, source: DirectorySource, target: ConnectionTarget
+    ) throws {
         guard running, !Task.isCancelled else { throw CancellationError() }
         var stale = false
         let root = try URL(
@@ -234,7 +263,7 @@ public final class LocalFilesModel: ObservableObject {
                 == URL(fileURLWithPath: source.config.path).resolvingSymlinksInPath().path
         else { throw PeerError.needsAction("目录位置已改变，请重新选择目录。") }
         let scoped = root.startAccessingSecurityScopedResource()
-        let monitor = Monitor(source: source, target: binding.target, root: root, scoped: scoped)
+        let monitor = Monitor(source: source, target: target, root: root, scoped: scoped)
         do {
             if stale, let index = bindings.firstIndex(where: { $0.id == binding.id }) {
                 bindings[index].bookmark = try root.bookmarkData(
@@ -278,7 +307,7 @@ public final class LocalFilesModel: ObservableObject {
                 statuses[id] = "正在扫描…"
                 var job: SourceJob?
                 let client: LocalFileClient
-                do { client = try self.client(monitor.target) } catch {
+                do { client = try await self.client(monitor.target) } catch {
                     statuses[id] = error.localizedDescription
                     monitor.dirty = true
                     break
@@ -319,16 +348,15 @@ public final class LocalFilesModel: ObservableObject {
                             statuses[id] = "\(message)；状态暂未写回信息库"
                         }
                     }
-                    if let job {
+                    if let job, !Task.isCancelled, running {
                         let status =
                             Date() >= job.deadline
                             ? "timed_out"
                             : PeerDatabase.isCancellation(error) ? "aborted" : "failed"
-                        let closing = Task {
+                        do {
                             try await client.close(
                                 job, status: status, state: DirectoryState(issue: message))
-                        }
-                        do { try await closing.value } catch {
+                        } catch {
                             statuses[id] = "\(message)；任务终态待信息库核对"
                         }
                     }
@@ -344,12 +372,14 @@ public final class LocalFilesModel: ObservableObject {
         statuses[id] = "\(progress.completed)/\(progress.total) · \(progress.filename)"
     }
 
-    private func client(_ target: ConnectionTarget) throws -> LocalFileClient {
-        let active = self.target
-        let connection =
-            active?.peerID == target.peerID && active?.host == target.host
-                && active?.port == target.port
-                && active?.database == target.database ? active! : target
+    private func prepare(_ client: LocalFileClient) async throws {
+        guard !prepared.contains(client.target.id) else { return }
+        try await client.prepare()
+        prepared.insert(client.target.id)
+    }
+
+    private func client(_ target: ConnectionTarget) async throws -> LocalFileClient {
+        let connection = try await context.connections.resolve(target)
         return LocalFileClient(
             target: connection, password: try context.credentials.read(for: connection.id))
     }
@@ -459,8 +489,8 @@ public final class LocalFilesModel: ObservableObject {
             }
             let bookmark = try url.bookmarkData(
                 options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
-            let client = try client(target)
-            try await client.prepare()
+            let client = try await client(target)
+            try await prepare(client)
             guard running, !Task.isCancelled else { throw CancellationError() }
             let directory: DirectorySource
             if let source {

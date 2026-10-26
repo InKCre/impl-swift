@@ -5,7 +5,6 @@ public final class BundledExtensionRuntime {
     public let module: any NativeExtension
     public private(set) var running = false
     public private(set) var applying = false
-    public private(set) var syncIssue: String?
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
     private let defaults: UserDefaults
     private var key: String { "extensions.\(module.descriptor.name).enabled" }
@@ -29,16 +28,9 @@ public final class BundledExtensionRuntime {
             for waiter in idleWaiters { waiter.resume() }
             idleWaiters.removeAll()
         }
-        syncIssue = nil
         if !enabled {
             defaults.set(false, forKey: key)
             try await stop()
-        }
-        do { try await module.setEnabled(enabled) } catch {
-            if enabled {
-                guard case PeerError.connection = error else { throw error }
-            }
-            syncIssue = "共享状态未同步：\(error.localizedDescription)"
         }
         if enabled {
             defaults.set(true, forKey: key)

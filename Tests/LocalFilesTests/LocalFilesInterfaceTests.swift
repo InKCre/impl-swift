@@ -60,7 +60,19 @@ struct LocalFilesInterfaceTests {
         model.selectedFile = file.id
         #expect(model.selectedText == nil && model.loadingText)
         try await until { model.selectedText == "# 标题\n\n第一段。\n\n- 列表\n" && !model.loadingText }
-        await model.refresh()
+        let database = PeerDatabase.shared
+        let pool = try await database.client(
+            for: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]))
+        let catalogVersion = try await pool.query(
+            "SELECT xmin::text FROM inkcre.sources_types WHERE id=\(LocalFilesContract.sourceType)"
+        )
+        .decode(String.self).first { @Sendable _ in true }
+        for _ in 0..<3 { await model.refresh() }
+        let afterRefresh = try await pool.query(
+            "SELECT xmin::text FROM inkcre.sources_types WHERE id=\(LocalFilesContract.sourceType)"
+        )
+        .decode(String.self).first { @Sendable _ in true }
+        #expect(catalogVersion == afterRefresh)
         #expect(model.selectedText != nil && !model.loadingText)
         try await snapshot(window, name: "files-body")
         let url = folder.appendingPathComponent("note.md")

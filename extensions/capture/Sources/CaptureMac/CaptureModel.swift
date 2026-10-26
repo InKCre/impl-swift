@@ -82,7 +82,8 @@ final class CaptureModel: ObservableObject {
         shortcuts = try GlobalShortcuts()
         store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
         credentials = CredentialStore(service: "\(identity).connections")
-        queue = CaptureQueue(store: store, credentials: credentials, client: client)
+        queue = CaptureQueue(
+            store: store, connections: self.connections, credentials: credentials, client: client)
     }
 
     func canPerform(_ action: ShortcutAction, isEditor: Bool, isQuickPanel: Bool) -> Bool {
@@ -487,7 +488,7 @@ final class CaptureModel: ObservableObject {
     }
 
     func resultURL(for record: CaptureRecord) -> URL? {
-        guard let result = record.result, result.availability == .available,
+        guard let result = record.result,
             let target = record.target
         else { return nil }
         let base = target.webURL ?? (connection?.peerID == target.peerID ? connection?.webURL : nil)

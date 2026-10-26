@@ -112,6 +112,9 @@ struct ConnectionSettingsView: View {
 
 private struct ExtensionSettingsView: View {
     @ObservedObject var host: PeerHost
+    @State private var selecting = false
+    @State private var issue: String?
+    @State private var result: String?
     var body: some View {
         Form {
             Section("随手收集") {
@@ -123,15 +126,13 @@ private struct ExtensionSettingsView: View {
                 Text(
                     host.runtime.applying
                         ? "正在应用…"
-                        : host.runtime.syncIssue
-                            ?? (host.runtime.running
-                                ? "本机运行中"
-                                : host.runtime.enabled ? "尚未启动；请停用后重新启用。" : "已停用；本机材料与共享内容保留")
+                        : (host.runtime.running
+                            ? "本机运行中"
+                            : host.runtime.enabled ? "尚未启动" : "已停用；本机材料与共享内容保留")
                 )
                 .foregroundStyle(.secondary)
                 LabeledContent("版本", value: host.capture.descriptor.version)
-                Text("随应用交付，提供选区、粘贴、截图与想法采集。")
-                    .font(.caption).foregroundStyle(.secondary)
+                participation(host.capture.descriptor)
             }
             Section("本地文件") {
                 Toggle(
@@ -144,12 +145,35 @@ private struct ExtensionSettingsView: View {
                 Text(
                     host.filesRuntime.applying
                         ? "正在应用…"
-                        : host.filesRuntime.syncIssue
-                            ?? (host.filesRuntime.running ? "本机运行中" : "已停用")
+                        : (host.filesRuntime.running
+                            ? "本机运行中" : host.filesRuntime.enabled ? "尚未启动" : "已停用")
                 )
                 .foregroundStyle(.secondary)
                 LabeledContent("版本", value: host.localFiles.descriptor.version)
+                participation(host.localFiles.descriptor)
             }
+            if let issue { Text(issue).foregroundStyle(.red).textSelection(.enabled) }
+            if let result { Text(result).textSelection(.enabled) }
         }.formStyle(.grouped)
+    }
+
+    @ViewBuilder private func participation(_ descriptor: NativeExtensionDescriptor) -> some View {
+        if let target = host.connection {
+            Button("在「\(target.name)」启用本机版本") {
+                selecting = true
+                issue = nil
+                result = nil
+                Task {
+                    defer { selecting = false }
+                    do {
+                        try await host.useBundledVersion(descriptor, target: target)
+                        result = "已在「\(target.name)」启用 \(descriptor.name) \(descriptor.version)"
+                    } catch {
+                        issue = error.localizedDescription
+                    }
+                }
+            }
+            .disabled(selecting || host.changingConnection)
+        }
     }
 }

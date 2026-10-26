@@ -41,9 +41,13 @@ struct CaptureStoreTests {
         try await store.report(draft.id, state: .pending, message: "迟到的错误")
         // No credential exists: an accidental dispatch would change the state to needsAction.
         let credentials = CredentialStore(service: "dev.inkcre.test.\(UUID().uuidString)")
+        let connections = ConnectionSettings(
+            url: directory.appendingPathComponent("connection.json"))
+        try await connections.save(target)
         #expect(try await store.pendingRecords().isEmpty)
         #expect(
-            try await CaptureQueue(store: store, credentials: credentials).process(force: true)
+            try await CaptureQueue(store: store, connections: connections, credentials: credentials)
+                .process(force: true)
                 == false)
         let retained = try #require(try await store.record(draft.id))
         #expect(retained.state == .cancelled)
@@ -77,7 +81,7 @@ struct CaptureStoreTests {
         try await store.deleteRecord(draft.id)
         let result = CaptureResult(
             submissionID: draft.id, rootBlockID: 42,
-            committedAt: Date(timeIntervalSince1970: 1_780_000_000), availability: .available)
+            committedAt: Date(timeIntervalSince1970: 1_780_000_000))
         try await store.confirm(draft.id, result: result)
         try await store.report(draft.id, state: .unknown, message: "删除后的迟到失败")
         #expect(try await store.record(draft.id) == nil)
@@ -184,8 +188,7 @@ struct CaptureStoreTests {
         _ = try await store.markDispatch(draft.id)
         let result = CaptureResult(
             submissionID: draft.id, rootBlockID: 123,
-            committedAt: Date(timeIntervalSince1970: 1_780_000_000),
-            availability: .deleted
+            committedAt: Date(timeIntervalSince1970: 1_780_000_000)
         )
         try await store.confirm(draft.id, result: result)
         let reopened = try CaptureStore(url: url)

@@ -15,11 +15,6 @@ public actor ConnectionSettings {
         }
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
-        // Preserve the existing single connection, including its Keychain and Peer identities.
-        if let target = try? decoder.decode(ConnectionTarget.self, from: data) {
-            try target.validate()
-            return SavedConnections(selected: target.id, connections: [target])
-        }
         let saved = try decoder.decode(SavedConnections.self, from: data)
         guard Set(saved.connections.map(\.id)).count == saved.connections.count,
             saved.selected == nil || saved.current != nil
@@ -31,6 +26,13 @@ public actor ConnectionSettings {
     }
 
     public func load() throws -> ConnectionTarget? { try loadAll().current }
+
+    public func resolve(_ frozen: ConnectionTarget) throws -> ConnectionTarget {
+        guard let current = try loadAll().connections.first(where: { $0.id == frozen.id }),
+            current.hasSameDestination(as: frozen)
+        else { throw PeerError.needsAction("原目标连接不可用，请恢复该信息库的连接。") }
+        return current
+    }
 
     public func select(_ id: UUID) throws -> ConnectionTarget {
         var saved = try loadAll()
@@ -46,6 +48,9 @@ public actor ConnectionSettings {
         try target.validate()
         var saved = try loadAll()
         if let index = saved.connections.firstIndex(where: { $0.id == target.id }) {
+            guard saved.connections[index].hasSameDestination(as: target) else {
+                throw PeerError.invalid("修改信息库地址需要创建新连接，已有材料的目标不能改变。")
+            }
             saved.connections[index] = target
         } else {
             saved.connections.append(target)
@@ -73,9 +78,8 @@ public actor ConnectionSettings {
         if !web.isEmpty && webURL == nil { throw PeerError.invalid("Web 地址无效。") }
         let same =
             previous?.host == host && previous?.port == port && previous?.database == database
-        let sameCredentials = same && previous?.username == username
         let target = ConnectionTarget(
-            id: sameCredentials ? previous!.id : UUID(), peerID: same ? previous!.peerID : UUID(),
+            id: same ? previous!.id : UUID(), peerID: same ? previous!.peerID : UUID(),
             host: host, port: port, database: database, username: username, tls: tls,
             webURL: webURL,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

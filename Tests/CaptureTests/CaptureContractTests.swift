@@ -30,30 +30,25 @@ import Testing
         Bundle.module.url(
             forResource: "capture-v1", withExtension: "json", subdirectory: "Fixtures"))
     let fixture = try CaptureJSON.decode([Fixture].self, from: Data(contentsOf: url))[1]
-    let data = try CaptureJSON.encode(CaptureCommit(fixture.payload))
-    #expect(data == (try CaptureJSON.encode(CaptureCommit(fixture.payload))))
-    let document = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    #expect(document["payload_digest"] as? String == fixture.digest)
-    let graph = try #require(document["graph"] as? [String: Any])
-    let blocks = try #require(graph["blocks"] as? [[String: Any]])
-    let relations = try #require(graph["relations"] as? [[String: Any]])
-    let blobs = try #require(graph["blobs"] as? [[String: Any]])
-    #expect(blocks.map { $0["id"] as? Int } == [-1, -2, -3, -4, -5])
+    let command = try CaptureCommit(fixture.payload)
+    let graph = command.graph
+    #expect(command.payload_digest == fixture.digest)
+    #expect(graph.blocks.map(\.id) == [-1, -2, -3, -4, -5])
     #expect(
-        blocks.map { $0["resolver"] as? String } == [
+        graph.blocks.map(\.resolver) == [
             "extensions.capture.capture.v1", "core.text.v1",
             "extensions.capture.attachment.v1", "core.image.v1", "core.text.v1",
         ])
-    #expect(blocks[1]["content"] as? String == fixture.payload.materials[0].text)
-    #expect(blocks[4]["content"] as? String == fixture.payload.annotation)
+    let root = try #require(
+        JSONSerialization.jsonObject(with: Data(graph.blocks[0].content.utf8)) as? [String: Any])
     #expect(
-        relations.map { $0["content"] as? String } == [
-            "material:0", "content", "material:1", "annotation",
-        ])
-    #expect(blobs.count == 1 && blobs[0]["block_id"] as? Int == -4)
+        root["submission_id"] as? String == fixture.payload.submissionID.uuidString.lowercased())
+    #expect(root["payload_digest"] as? String == fixture.digest)
+    #expect(graph.blocks[1].content == fixture.payload.materials[0].text)
+    #expect(graph.blocks[4].content == fixture.payload.annotation)
     #expect(
-        Data(base64Encoded: try #require(blobs[0]["data_base64"] as? String))
-            == fixture.payload.materials[1].data)
+        graph.relations.map(\.content) == ["material:0", "content", "material:1", "annotation"])
+    #expect(graph.blobs.count == 1 && graph.blobs[-4] == fixture.payload.materials[1].data)
 }
 
 @Test func nativeValidationRejectsMismatchedImagesAndCountsUTF8Bytes() throws {

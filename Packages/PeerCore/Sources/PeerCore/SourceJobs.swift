@@ -21,16 +21,16 @@ public enum SourceJobs {
         throw PeerError.needsAction("信息库尚未登记来源扫描命令。")
     }
 
-    public static func pending(source: Int, on client: PostgresClient) async throws -> [Int] {
+    public static func pending(source: Int, on client: PostgresConnection) async throws -> [Int] {
         try await client.query(
-            "UPDATE inkcre.jobs SET status='timed_out' WHERE type=\(type) AND status='running' AND parameters->'source'=to_jsonb(\(source)::bigint) AND started_at + timeout_seconds * interval '1 second' < now()"
-        )
+            "UPDATE inkcre.jobs SET status='timed_out' WHERE type=\(type) AND status='running' AND parameters->'source'=to_jsonb(\(source)::bigint) AND started_at + timeout_seconds * interval '1 second' < now()",
+            logger: PeerDatabase.logger)
         try await client.query(
-            "UPDATE inkcre.jobs SET status='aborted' WHERE type=\(type) AND status='pending' AND abort_requested AND parameters->'source'=to_jsonb(\(source)::bigint)"
-        )
+            "UPDATE inkcre.jobs SET status='aborted' WHERE type=\(type) AND status='pending' AND abort_requested AND parameters->'source'=to_jsonb(\(source)::bigint)",
+            logger: PeerDatabase.logger)
         let rows = try await client.query(
-            "SELECT id FROM inkcre.jobs WHERE type=\(type) AND status='pending' AND parameters->'source'=to_jsonb(\(source)::bigint) ORDER BY id"
-        )
+            "SELECT id FROM inkcre.jobs WHERE type=\(type) AND status='pending' AND parameters->'source'=to_jsonb(\(source)::bigint) ORDER BY id",
+            logger: PeerDatabase.logger)
         var ids: [Int] = []
         for try await id in rows.decode(Int.self) { ids.append(id) }
         return ids
@@ -53,11 +53,12 @@ public enum SourceJobs {
         return nil
     }
 
-    public static func check(_ job: SourceJob, on client: PostgresClient) async throws {
+    public static func check(_ job: SourceJob, on client: PostgresConnection) async throws {
         try Task.checkCancellation()
         if Date() >= job.deadline { throw PeerError.needsAction("扫描已超时。") }
         let rows = try await client.query(
-            "SELECT status::text,abort_requested FROM inkcre.jobs WHERE id=\(job.id)")
+            "SELECT status::text,abort_requested FROM inkcre.jobs WHERE id=\(job.id)",
+            logger: PeerDatabase.logger)
         for try await (status, aborted) in rows.decode((String, Bool).self) {
             guard status == "running", !aborted else { throw CancellationError() }
             return
@@ -66,13 +67,13 @@ public enum SourceJobs {
     }
 
     public static func close(
-        _ job: SourceJob, status: String, state: String, on client: PostgresClient
+        _ job: SourceJob, status: String, state: String, on client: PostgresConnection
     ) async throws {
         guard ["finished", "failed", "timed_out", "aborted"].contains(status) else {
             throw PeerError.invalid("无效的任务终态。")
         }
         try await client.query(
-            "UPDATE inkcre.jobs SET status=\(status)::inkcre.jobstatus,state=\(state)::jsonb WHERE id=\(job.id) AND status='running'"
-        )
+            "UPDATE inkcre.jobs SET status=\(status)::inkcre.jobstatus,state=\(state)::jsonb WHERE id=\(job.id) AND status='running'",
+            logger: PeerDatabase.logger)
     }
 }

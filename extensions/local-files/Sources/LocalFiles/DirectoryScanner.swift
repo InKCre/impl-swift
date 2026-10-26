@@ -29,8 +29,18 @@ public enum DirectoryScanner {
         }
         var used: Set<Int> = []
         var errors = 0
+        var nextRemoteCheck = ContinuousClock.now
+        func check(force: Bool = false) async throws {
+            try Task.checkCancellation()
+            guard let job else { return }
+            if Date() >= job.deadline { throw PeerError.needsAction("扫描已超时。") }
+            if force || ContinuousClock.now >= nextRemoteCheck {
+                try await client.check(job)
+                nextRemoteCheck = .now.advanced(by: .seconds(5))
+            }
+        }
         for (index, url) in files.enumerated() {
-            try await client.check(job)
+            try await check()
             var record = byPath[url.path]?.first
             let previous = record?.metadata.revision
             let observation = try await background {
@@ -44,14 +54,14 @@ public enum DirectoryScanner {
                 if candidates.count == 1 { record = candidates[0] }
             }
             if let record { used.insert(record.id) }
-            try await client.check(job)
+            try await check()
             try await client.save(observation, replacing: record, source: source)
             if observation.metadata.issue != nil { errors += 1 }
             await progress(
                 ScanProgress(
                     completed: index + 1, total: files.count, filename: url.lastPathComponent))
         }
-        try await client.check(job)
+        try await check(force: true)
         guard try rootIdentity(root) == identity else {
             throw PeerError.needsAction("目录在扫描中变更，等待重新核对。")
         }

@@ -1,6 +1,7 @@
 import Capture
 import Foundation
 import PeerCore
+import PostgresNIO
 import Security
 import Testing
 
@@ -52,6 +53,8 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let service = "dev.inkcre.native.acceptance.\(UUID().uuidString)"
     let credentials = CredentialStore(service: service)
+    let connections = ConnectionSettings(url: directory.appendingPathComponent("connection.json"))
+    try await connections.save(target)
     try credentials.save(password, for: target.id)
     defer {
         SecItemDelete(
@@ -64,11 +67,15 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     _ = try await store.freeze(CaptureRecord(payload: payload), target: target)
     _ = try await store.markDispatch(payload.submissionID)
     let reopened = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
-    try await CaptureQueue(store: reopened, credentials: credentials, client: client).process(
+    try await CaptureQueue(
+        store: reopened, connections: connections, credentials: credentials, client: client
+    ).process(
         force: true)
     let recovered = try #require(try await reopened.record(payload.submissionID))
     #expect(recovered.state == .confirmed && recovered.payload == nil)
     #expect(recovered.result == result)
+    try await database.useBundledVersion(
+        CaptureClient.descriptor, target: target, password: password)
 
     var changed = payload
     changed.annotation = "另一份材料"
@@ -78,7 +85,9 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
         _ = try await client.submit(conflict, secret: password)
     }
 
-    let before = try await pg.query("SELECT count(*) FROM inkcre.blocks").decode(Int.self).first {
+    let before = try await pg.query(
+        "SELECT count(*) FROM inkcre.blocks WHERE content='must rollback'"
+    ).decode(Int.self).first {
         _ in true
     }
     await #expect(throws: (any Error).self) {
@@ -89,15 +98,20 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
                 on: connection)
         }
     }
-    let after = try await pg.query("SELECT count(*) FROM inkcre.blocks").decode(Int.self).first {
+    let after = try await pg.query(
+        "SELECT count(*) FROM inkcre.blocks WHERE content='must rollback'"
+    ).decode(Int.self).first {
         _ in
         true
     }
     #expect(before == after)
     try await pg.query("DELETE FROM inkcre.blocks WHERE id=\(result.rootBlockID)")
-    #expect(try await client.submit(record, secret: password).availability == .deleted)
-    try await database.setEnabled(
-        false, target: target, password: password, extension: CaptureClient.descriptor)
+    #expect(try await client.recover(record, secret: password) == nil)
+    // A locally confirmed capture is never queued again, even if its shared root is deleted.
+    #expect(try await reopened.pendingRecords().isEmpty)
+    try await pg.query(
+        "UPDATE inkcre.extension_peer_participations SET enabled=false WHERE peer_id=\(target.peerID)"
+    )
     do {
         _ = try await client.submit(record, secret: password)
         Issue.record("停用后不得继续共享写入")
@@ -115,14 +129,14 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     ).decode(Int.self).first { _ in true }
     #expect(removed == 0)
     // An explicit enable is allowed to create a first participation before Capture starts.
-    try await database.setEnabled(
-        true, target: target, password: password, extension: CaptureClient.descriptor)
+    try await database.useBundledVersion(
+        CaptureClient.descriptor, target: target, password: password)
     _ = try await client.submit(record, secret: password)
     let first = ConnectionTarget(
         host: target.host, port: target.port, database: target.database, username: target.username,
         tls: target.tls)
-    try await database.setEnabled(
-        true, target: first, password: password, extension: CaptureClient.descriptor)
+    try await database.useBundledVersion(
+        CaptureClient.descriptor, target: first, password: password)
     var firstRecord = CaptureRecord(payload: CapturePayload(materials: [Material(text: "首次准入")]))
     firstRecord.target = first
     try await pg.query(
@@ -134,8 +148,93 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
         "SELECT count(*) FROM inkcre.extension_peer_participations WHERE peer_id=\(first.peerID)"
     ).decode(Int.self).first { _ in true }
     #expect(removedBeforeFirstJoin == 0)
-    try await database.setEnabled(
-        true, target: first, password: password, extension: CaptureClient.descriptor)
+    try await database.useBundledVersion(
+        CaptureClient.descriptor, target: first, password: password)
     _ = try await client.submit(firstRecord, secret: password)
+    try await pg.query(
+        "UPDATE inkcre.extension_peer_participations SET version='0.0.9',enabled=false WHERE peer_id=\(first.peerID)"
+    )
+    await #expect(throws: PeerError.self) {
+        try await database.join(first, password: password, extension: CaptureClient.descriptor)
+    }
+    let old = try await pg.query(
+        "SELECT version,enabled FROM inkcre.extension_peer_participations WHERE peer_id=\(first.peerID)"
+    )
+    .decode((String, Bool).self).first { _ in true }
+    #expect(old?.0 == "0.0.9" && old?.1 == false)
+    try await database.useBundledVersion(
+        CaptureClient.descriptor, target: first, password: password)
+    try await database.join(first, password: password, extension: CaptureClient.descriptor)
+    let registeredVersion = try await pg.query(
+        "SELECT xmin::text FROM inkcre.peers WHERE id=\(first.peerID)"
+    )
+    .decode(String.self).first { _ in true }
+    try await database.register(first, password: password)
+    let unchangedVersion = try await pg.query(
+        "SELECT xmin::text FROM inkcre.peers WHERE id=\(first.peerID)"
+    )
+    .decode(String.self).first { _ in true }
+    #expect(registeredVersion == unchangedVersion)
+    try await pg.query(
+        "UPDATE inkcre.peers SET lease_expires_at=now()-interval '1 second' WHERE id IN (\(first.peerID),\(target.peerID))"
+    )
+    #expect(await database.renewLeases().isEmpty)
+    let online = try await pg.query(
+        "SELECT count(*) FROM inkcre.peers WHERE id IN (\(first.peerID),\(target.peerID)) AND lease_expires_at > now()"
+    )
+    .decode(Int.self).first { _ in true }
+    #expect(online == 2)
+    await database.shutdown()
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["INKCRE_CAPTURE_TEST_DATABASE"] != nil))
+func cancellingAStalledQueryReleasesItsConnectionAndRollsBack() async throws {
+    let env = ProcessInfo.processInfo.environment
+    let target = ConnectionTarget(
+        host: "127.0.0.1", port: Int(env["INKCRE_CAPTURE_TEST_PORT"] ?? "5432")!,
+        database: try #require(env["INKCRE_CAPTURE_TEST_DATABASE"]), username: "inkcre_core",
+        tls: .disable)
+    let password = try #require(env["INKCRE_CAPTURE_TEST_PASSWORD"])
+    let database = PeerDatabase()
+    let marker = "cancel-\(UUID().uuidString)"
+    let sleepingQuery = "SELECT pg_sleep(600) /* \(marker) */"
+    let blocked = Task {
+        try await database.withConnection(for: target, password: password) { connection in
+            try await connection.withTransaction(logger: PeerDatabase.logger) { connection in
+                try await connection.query(
+                    "INSERT INTO inkcre.blocks(resolver,content) VALUES ('core.text.v1',\(marker))",
+                    logger: PeerDatabase.logger)
+                let rows = try await connection.query(
+                    PostgresQuery(unsafeSQL: sleepingQuery), logger: PeerDatabase.logger)
+                for try await _ in rows {}
+            }
+        }
+    }
+    let pg = try await database.client(for: target, password: password)
+    var active = false
+    for _ in 0..<100 {
+        let rows = try await pg.query(
+            "SELECT count(*)::integer FROM pg_stat_activity WHERE datname=current_database() AND query=\(sleepingQuery) AND state='active'"
+        )
+        for try await count in rows.decode(Int.self) { active = count > 0 }
+        if active { break }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(active)
+    let start = ContinuousClock.now
+    blocked.cancel()
+    do {
+        try await blocked.value
+        Issue.record("Cancelled transaction unexpectedly completed")
+    } catch {}
+    #expect(start.duration(to: .now) < .seconds(2))
+    let count = try await database.withConnection(for: target, password: password) { connection in
+        let rows = try await connection.query(
+            "SELECT count(*)::integer FROM inkcre.blocks WHERE content=\(marker)",
+            logger: PeerDatabase.logger)
+        for try await count in rows.decode(Int.self) { return count }
+        return -1
+    }
+    #expect(count == 0)
     await database.shutdown()
 }

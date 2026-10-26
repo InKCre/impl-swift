@@ -28,6 +28,11 @@ public struct ConnectionTarget: Codable, Sendable, Equatable, Identifiable {
         self.name = name
     }
 
+    public func hasSameDestination(as other: Self) -> Bool {
+        peerID == other.peerID && host == other.host && port == other.port
+            && database == other.database
+    }
+
     public func validate() throws {
         guard !host.isEmpty, !host.contains(where: { $0.isWhitespace }), !host.contains("/"),
             (1...65535).contains(port), !database.isEmpty, !username.isEmpty,

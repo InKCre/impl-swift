@@ -138,27 +138,22 @@ public struct CapturePayload: Codable, Sendable {
 }
 
 public struct CaptureResult: Codable, Sendable, Equatable {
-    public enum Availability: String, Codable, Sendable { case available, deleted }
     public let submissionID: UUID
     public let rootBlockID: Int
     public let committedAt: Date
-    public let availability: Availability
 
-    public init(submissionID: UUID, rootBlockID: Int, committedAt: Date, availability: Availability)
-    {
+    public init(submissionID: UUID, rootBlockID: Int, committedAt: Date) {
         self.submissionID = submissionID
         self.rootBlockID = rootBlockID
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         self.committedAt = formatter.date(from: formatter.string(from: committedAt))!
-        self.availability = availability
     }
 
     enum CodingKeys: String, CodingKey {
         case submissionID = "submission_id"
         case rootBlockID = "root_block_id"
         case committedAt = "committed_at"
-        case availability
     }
 }
 
@@ -190,7 +185,7 @@ public struct CaptureRecord: Codable, Sendable, Identifiable {
         case .unknown: "结果待确认"
         case .needsAction: "需要处理"
         case .cancelled: "已取消后续发送"
-        case .confirmed: result?.availability == .deleted ? "曾收入，内容已删除" : "已收入"
+        case .confirmed: "已收入"
         }
     }
 }
