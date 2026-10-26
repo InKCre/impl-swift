@@ -147,12 +147,14 @@ public struct FileObservation: Sendable {
 
 public struct DirectoryBinding: Codable, Sendable, Identifiable {
     public let source: Int
-    public let target: ConnectionTarget
+    public let connectionID: UUID
+    public let peerID: UUID
     public var bookmark: Data
-    public var id: String { "\(target.peerID).\(source)" }
+    public var id: String { "\(peerID).\(source)" }
     public init(source: Int, target: ConnectionTarget, bookmark: Data) {
         self.source = source
-        self.target = target
+        self.connectionID = target.id
+        self.peerID = target.peerID
         self.bookmark = bookmark
     }
 }

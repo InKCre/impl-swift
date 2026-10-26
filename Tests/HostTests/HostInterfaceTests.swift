@@ -49,6 +49,18 @@ struct HostInterfaceTests {
                 to:
                     URL(fileURLWithPath: path).appendingPathComponent("multiple-connections.png"))
         }
+        if let path = ProcessInfo.processInfo.environment["INKCRE_LAYOUT_EVIDENCE_DIR"] {
+            let window = PeerSettingsWindow(host: host)
+            defer { window.orderOut(nil) }
+            window.select(.extensions)
+            try await Task.sleep(for: .milliseconds(150))
+            let view = try #require(window.contentView?.superview)
+            view.layoutSubtreeIfNeeded()
+            let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            try #require(bitmap.representation(using: .png, properties: [:])).write(
+                to: URL(fileURLWithPath: path).appendingPathComponent("extensions-connected.png"))
+        }
         #expect(
             try await ConnectionSettings(url: directory.appendingPathComponent("connection.json"))
                 .load() == second)

@@ -196,7 +196,7 @@ public actor CaptureStore {
         value.message =
             value.attempts == 0
             ? "尚未发送。材料保留在本机，可继续收入。"
-            : "已停止后续发送；此前请求可能已收入。继续收入时会先确认原回执。"
+            : "已停止后续发送；此前请求可能已收入。继续收入时会先核对原 Capture 根。"
         value.updatedAt = Date()
         try save(value)
         return value
@@ -212,7 +212,7 @@ public actor CaptureStore {
         guard var value = try record(id), value.state != .draft,
             result.submissionID == id
         else {
-            throw PeerError.invalid("提交回执与本机记录不匹配。")
+            throw PeerError.invalid("提交结果与本机记录不匹配。")
         }
         value.result = result
         value.state = .confirmed

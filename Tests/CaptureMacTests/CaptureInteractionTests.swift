@@ -8,6 +8,7 @@ import Testing
 
 @Suite(.serialized) @MainActor
 struct CaptureInteractionTests {
+    init() { _ = NSApplication.shared }
     @Test func emptyCaptureShortcutDoesNotOpenConnectionOrStartSubmission() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString)
@@ -41,7 +42,7 @@ struct CaptureInteractionTests {
         try await model.store.confirm(
             old.id,
             result: CaptureResult(
-                submissionID: old.id, rootBlockID: 42, committedAt: Date(), availability: .available
+                submissionID: old.id, rootBlockID: 42, committedAt: Date()
             ))
         model.newThought()
         for _ in 0..<100 where model.submitting { try await Task.sleep(for: .milliseconds(10)) }
@@ -145,10 +146,15 @@ struct CaptureInteractionTests {
             host: "original.test", database: "original", username: "test")
         let active = ConnectionTarget(host: "active.test", database: "active", username: "test")
         model.connection = active
+        try await model.connections.save(originalTarget)
         try await model.connections.save(active)
         let draft = CaptureRecord(payload: CapturePayload(materials: [Material(text: "原提交材料")]))
         _ = try await model.store.freeze(draft, target: originalTarget)
         let cancelled = try await model.store.cancel(draft.id)
+        var edited = originalTarget
+        edited.username = "updated_role"
+        try await model.connections.save(edited)
+        _ = try await model.connections.select(active.id)
         // Merely opening and cancelling the editor must leave cancelled work dormant.
         await model.sendPending(force: true)
         #expect(await transport.calls.isEmpty)
@@ -159,15 +165,16 @@ struct CaptureInteractionTests {
         #expect(model.connection == active)
         #expect(try await model.connections.load() == active)
         let calls = await transport.calls
-        #expect(calls.map(\.kind) == ["recover", "submit"])
+        #expect(calls.map(\.kind) == ["submit"])
         for call in calls {
             #expect(
-                call.record.id == draft.id && call.record.target == originalTarget
+                call.record.id == draft.id && call.record.target == edited
                     && call.secret == "new-fixture-password")
             #expect(
                 try CaptureJSON.encode(call.record.payload) == CaptureJSON.encode(draft.payload))
         }
         #expect(model.records.first?.state == .confirmed)
+        #expect(try await model.store.record(draft.id)?.target == originalTarget)
     }
 
     @Test func submittedFeedbackRemainsFindableWhileWritingTheNextDraft() async throws {
@@ -187,6 +194,7 @@ struct CaptureInteractionTests {
         defer { model.cancelWork() }
         let target = ConnectionTarget(host: "fixture.test", database: "inkcre", username: "test")
         model.connection = target
+        try await model.connections.save(target)
         try model.credentials.save("fixture", for: target.id)
         model.thought = "第一条想法"
         let submittedID = model.draft.id
@@ -219,11 +227,12 @@ struct CaptureInteractionTests {
             host: "original.test", database: "original", username: "test")
         let active = ConnectionTarget(host: "active.test", database: "active", username: "test")
         model.connection = active
+        try await model.connections.save(original)
         try await model.connections.save(active)
         let draft = CaptureRecord(payload: CapturePayload(materials: [Material(text: "历史记录")]))
         _ = try await model.store.freeze(draft, target: original)
         let receipt = CaptureResult(
-            submissionID: draft.id, rootBlockID: 42, committedAt: Date(), availability: .available)
+            submissionID: draft.id, rootBlockID: 42, committedAt: Date())
         try await model.store.confirm(draft.id, result: receipt)
         let confirmed = try #require(try await model.store.record(draft.id))
         let updated = try await model.updateWebAddress("https://original-web.test", for: confirmed)
@@ -256,7 +265,7 @@ struct CaptureInteractionTests {
         record.target = target
         record.state = .confirmed
         record.result = CaptureResult(
-            submissionID: record.id, rootBlockID: 42, committedAt: Date(), availability: .available)
+            submissionID: record.id, rootBlockID: 42, committedAt: Date())
         #expect(model.resultURL(for: record) == nil)
         var configured = target
         configured.webURL = URL(string: "https://fixture.test")
@@ -268,10 +277,6 @@ struct CaptureInteractionTests {
         model.connection = ConnectionTarget(
             host: "other.test", database: "other", username: "inkcre_core",
             webURL: URL(string: "https://other.test"))
-        #expect(model.resultURL(for: record) == nil)
-        model.connection = configured
-        record.result = CaptureResult(
-            submissionID: record.id, rootBlockID: 42, committedAt: Date(), availability: .deleted)
         #expect(model.resultURL(for: record) == nil)
     }
 
@@ -411,6 +416,6 @@ private actor JourneyTransport: CaptureTransport {
     func submit(_ record: CaptureRecord, secret: String) async throws -> CaptureResult {
         calls.append(Call(kind: "submit", record: record, secret: secret))
         return CaptureResult(
-            submissionID: record.id, rootBlockID: 42, committedAt: Date(), availability: .available)
+            submissionID: record.id, rootBlockID: 42, committedAt: Date())
     }
 }

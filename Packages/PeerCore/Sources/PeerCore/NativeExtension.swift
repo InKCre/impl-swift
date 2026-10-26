@@ -15,7 +15,6 @@ public struct NativeExtensionDescriptor: Codable, Sendable, Equatable {
 public protocol NativeExtension: AnyObject {
     var descriptor: NativeExtensionDescriptor { get }
     func start() throws
-    func setEnabled(_ enabled: Bool) async throws
     func stop() async throws
     func showMain()
 }

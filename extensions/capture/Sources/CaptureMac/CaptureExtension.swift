@@ -413,20 +413,6 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         }
     }
 
-    public func setEnabled(_ enabled: Bool) async throws {
-        guard let target = try await context.connections.load() else { return }
-        let password = try context.credentials.read(for: target.id)
-        do {
-            try await PeerDatabase.shared.setEnabled(
-                enabled, target: target, password: password, extension: descriptor)
-        } catch {
-            if case PeerError.connection = PeerDatabase.failure(error) {
-                throw PeerError.connection("离线：本机开关生效，共享意图未更新。重连以信息库选择为准。")
-            }
-            throw PeerDatabase.failure(error)
-        }
-    }
-
     public func stop() async throws {
         guard let model else { return }
         NSApp.keyWindow?.makeFirstResponder(nil)

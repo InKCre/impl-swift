@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import PeerCore
 import PostgresNIO
@@ -39,25 +38,29 @@ public struct CaptureClient: CaptureTransport {
             throw PeerError.invalid("待办缺少材料或目标。")
         }
         do {
-            let client = try await database.client(for: target, password: secret)
-            return try await Self.receipt(
-                record.id, digest: payload.canonicalDigest(), client: client)
+            return try await database.withConnection(for: target, password: secret) { connection in
+                try await Self.result(
+                    from: connection.query(Self.lookup(record.id), logger: PeerDatabase.logger),
+                    id: record.id, digest: payload.canonicalDigest())
+            }
         } catch { throw PeerDatabase.failure(error, dispatched: false) }
     }
 
-    private static func receipt(_ id: UUID, digest: String, client: PostgresClient) async throws
+    private static func lookup(_ id: UUID) -> PostgresQuery {
+        """
+        SELECT content::jsonb->>'payload_digest',id,created_at FROM inkcre.blocks
+        WHERE CASE WHEN resolver='extensions.capture.capture.v1'
+          THEN content::jsonb->>'submission_id' END=\(id.uuidString.lowercased())
+        """
+    }
+
+    private static func result(from rows: PostgresRowSequence, id: UUID, digest: String)
+        async throws
         -> CaptureResult?
     {
-        let rows = try await client.query(
-            """
-            SELECT r.payload_digest,r.root_block_id,r.committed_at,EXISTS(SELECT 1 FROM inkcre.blocks b WHERE b.id=r.root_block_id)
-            FROM inkcre.capture_receipts r WHERE r.submission_id=\(id)
-            """)
-        for try await (saved, root, date, exists) in rows.decode((String, Int, Date, Bool).self) {
+        for try await (saved, root, date) in rows.decode((String, Int, Date).self) {
             guard saved == digest else { throw PeerError.needsAction("提交身份与已保存材料冲突，原材料已保留。") }
-            return CaptureResult(
-                submissionID: id, rootBlockID: root, committedAt: date,
-                availability: exists ? .available : .deleted)
+            return CaptureResult(submissionID: id, rootBlockID: root, committedAt: date)
         }
         return nil
     }
@@ -67,64 +70,40 @@ public struct CaptureClient: CaptureTransport {
             throw PeerError.invalid("待办缺少冻结材料或目标。")
         }
         let command = try CaptureCommit(payload)
-        let graphDigest = SHA256.hash(data: try CaptureJSON.encode(command.graph)).map {
-            String(format: "%02x", $0)
-        }.joined()
         do {
-            _ = try await database.register(target, password: secret)
+            try await database.register(target, password: secret)
             try await database.join(target, password: secret, extension: Self.descriptor)
-            let client = try await database.client(for: target, password: secret)
-            let result = try await client.withTransaction(logger: PeerDatabase.logger) {
-                connection in
-                try await PeerDatabase.requireSelection(
-                    Self.descriptor, peerID: target.peerID, on: connection)
-                // The UUID lock covers receipt lookup, graph writes and the receipt itself.
-                try await connection.query(
-                    "SELECT pg_advisory_xact_lock(hashtextextended(\(record.id.uuidString.lowercased()),0))",
-                    logger: PeerDatabase.logger)
-                let rows = try await connection.query(
-                    """
-                    SELECT r.payload_digest,r.graph_digest,r.root_block_id,r.committed_at,EXISTS(SELECT 1 FROM inkcre.blocks b WHERE b.id=r.root_block_id)
-                    FROM inkcre.capture_receipts r WHERE r.submission_id=\(record.id)
-                    """, logger: PeerDatabase.logger)
-                for try await (saved, graph, root, date, exists) in rows.decode(
-                    (String, String, Int, Date, Bool).self)
-                {
-                    guard saved == command.payload_digest, graph == graphDigest else {
-                        throw PeerError.needsAction("提交身份与已保存材料或图冲突。")
+            return try await database.withConnection(for: target, password: secret) { connection in
+                try await connection.withTransaction(logger: PeerDatabase.logger) { connection in
+                    try await PeerDatabase.requireSelection(
+                        Self.descriptor, peerID: target.peerID, on: connection)
+                    // Serialize retries of this submission before checking or writing its graph.
+                    try await connection.query(
+                        "SELECT pg_advisory_xact_lock(hashtextextended(\(record.id.uuidString.lowercased()),0))",
+                        logger: PeerDatabase.logger)
+                    if let existing = try await Self.result(
+                        from: connection.query(Self.lookup(record.id), logger: PeerDatabase.logger),
+                        id: record.id, digest: command.payload_digest)
+                    {
+                        return existing
                     }
-                    return CaptureResult(
-                        submissionID: record.id, rootBlockID: root, committedAt: date,
-                        availability: exists ? .available : .deleted)
+                    let ids = try await InfoBase.persist(
+                        blocks: command.graph.blocks, relations: command.graph.relations,
+                        blobs: command.graph.blobs,
+                        on: connection)
+                    guard let root = ids[command.graph.root_local_id] else {
+                        throw PeerError.invalid("采集图缺少根。")
+                    }
+                    let rows = try await connection.query(
+                        "SELECT created_at FROM inkcre.blocks WHERE id=\(root)",
+                        logger: PeerDatabase.logger)
+                    for try await date in rows.decode(Date.self) {
+                        return CaptureResult(
+                            submissionID: record.id, rootBlockID: root, committedAt: date)
+                    }
+                    throw PeerError.outcomeUnknown
                 }
-                let ids = try await InfoBase.persist(
-                    blocks: command.graph.blocks, relations: command.graph.relations,
-                    blobs: Dictionary(
-                        uniqueKeysWithValues: command.graph.blobs.map {
-                            ($0.block_id, $0.data_base64)
-                        }),
-                    on: connection
-                )
-                guard let root = ids[command.graph.root_local_id] else {
-                    throw PeerError.invalid("采集图缺少根。")
-                }
-                let inserted = try await connection.query(
-                    """
-                    INSERT INTO inkcre.capture_receipts(submission_id,payload_digest,graph_digest,root_block_id)
-                    VALUES (\(record.id),\(command.payload_digest),\(graphDigest),\(root)) RETURNING committed_at
-                    """, logger: PeerDatabase.logger)
-                for try await date in inserted.decode(Date.self) {
-                    return CaptureResult(
-                        submissionID: record.id, rootBlockID: root, committedAt: date,
-                        availability: .available)
-                }
-                throw PeerError.outcomeUnknown
             }
-            guard let persisted = try await recover(record, secret: secret),
-                persisted.rootBlockID == result.rootBlockID
-            else { throw PeerError.outcomeUnknown }
-            return persisted
         } catch { throw PeerDatabase.failure(error, dispatched: true) }
     }
-
 }

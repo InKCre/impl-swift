@@ -169,6 +169,20 @@ func nativeSourceUpdatesCurrentGraphAndPreservesFailedAndDeletedBodies() async t
     #expect(try await client.claim(jobID, source: source) == nil)
     let result = try await DirectoryScanner.scan(source: source, client: client, job: job)
     try await client.close(job, status: "failed", state: result)
+    let cancelledID = try await client.submitScan(source)
+    let cancelled = try #require(try await client.claim(cancelledID, source: source))
+    await #expect(throws: CancellationError.self) {
+        try await DirectoryScanner.scan(source: source, client: client, job: cancelled) {
+            progress in
+            if progress.completed == 1 {
+                do {
+                    try await pool.query(
+                        "UPDATE inkcre.jobs SET abort_requested=true WHERE id=\(cancelledID)")
+                } catch { Issue.record("无法设置合成取消请求：\(error)") }
+            }
+        }
+    }
+    try await client.close(cancelled, status: "aborted", state: DirectoryState())
     try await client.setEnabled(false, source: source)
     await #expect(throws: (any Error).self) {
         try await DirectoryScanner.scan(source: source, client: client)

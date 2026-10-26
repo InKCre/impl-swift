@@ -3,6 +3,7 @@ import PeerCore
 
 public actor CaptureQueue {
     private let store: CaptureStore
+    private let connections: ConnectionSettings
     private let credentials: CredentialStore
     private let client: any CaptureTransport
     private var running = false
@@ -10,9 +11,10 @@ public actor CaptureQueue {
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(
-        store: CaptureStore, credentials: CredentialStore,
+        store: CaptureStore, connections: ConnectionSettings, credentials: CredentialStore,
         client: any CaptureTransport = CaptureClient()
     ) {
+        self.connections = connections
         self.store = store
         self.credentials = credentials
         self.client = client
@@ -28,13 +30,25 @@ public actor CaptureQueue {
     public func process(force: Bool = false) async throws -> Bool {
         guard !isStopped, !Task.isCancelled, !running else { return false }
         running = true
-        var changed = false
         defer {
             running = false
             for waiter in idleWaiters { waiter.resume() }
             idleWaiters.removeAll()
         }
-        for item in try await store.pendingRecords() {
+        let groups = Dictionary(grouping: try await store.pendingRecords()) { $0.target?.id }
+        return try await withThrowingTaskGroup(of: Bool.self) { group in
+            for records in groups.values {
+                group.addTask { try await self.process(records, force: force) }
+            }
+            var changed = false
+            for try await result in group { changed = changed || result }
+            return changed
+        }
+    }
+
+    private func process(_ records: [CaptureRecord], force: Bool) async throws -> Bool {
+        var changed = false
+        for item in records {
             guard !isStopped, !Task.isCancelled else { return changed }
             let delay = min(300.0, pow(2.0, Double(min(item.attempts, 8))) * 2)
             if !force && item.attempts > 0 && Date().timeIntervalSince(item.updatedAt) < delay {
@@ -42,14 +56,20 @@ public actor CaptureQueue {
             }
             guard let target = item.target else { continue }
             do {
-                let secret = try credentials.read(for: target.id)
-                if let result = try await client.recover(item, secret: secret) {
+                let connection = try await connections.resolve(target)
+                let secret = try credentials.read(for: connection.id)
+                var outgoing = item
+                outgoing.target = connection
+                if item.attempts > 0,
+                    let result = try await client.recover(outgoing, secret: secret)
+                {
                     try await store.confirm(item.id, result: result)
                     changed = true
                     continue
                 }
                 guard !isStopped, !Task.isCancelled else { return changed }
-                let dispatched = try await store.markDispatch(item.id)
+                var dispatched = try await store.markDispatch(item.id)
+                dispatched.target = connection
                 changed = true
                 guard !isStopped, !Task.isCancelled else { return changed }
                 let result = try await client.submit(dispatched, secret: secret)

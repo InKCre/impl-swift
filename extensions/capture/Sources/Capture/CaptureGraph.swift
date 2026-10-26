@@ -4,26 +4,23 @@ import PeerCore
 /// Capture owns this graph; the Host supplies transaction and storage mechanics.
 // Capture 的序列化字段遵循跨端图协议。
 // swift-format-ignore: AlwaysUseLowerCamelCase
-struct CaptureCommit: Encodable, Sendable {
-    struct Blob: Encodable, Sendable {
-        let block_id: Int
-        let data_base64: Data
-    }
-
-    struct Graph: Encodable, Sendable {
+struct CaptureCommit: Sendable {
+    struct Graph: Sendable {
         let root_local_id = -1
         var blocks: [GraphBlock]
         var relations: [GraphRelation] = []
-        var blobs: [Blob] = []
+        var blobs: [Int: Data] = [:]
     }
 
-    let submission_id: UUID
     let payload_digest: String
     let graph: Graph
 
     init(_ payload: CapturePayload) throws {
         try payload.validate()
+        let digest = try payload.canonicalDigest()
         struct Metadata: Encodable {
+            let submission_id: String
+            let payload_digest: String
             let captured_at: Date
             let entry: CaptureEntry
             let origin: CaptureOrigin?
@@ -40,6 +37,8 @@ struct CaptureCommit: Encodable, Sendable {
                 id: -1, resolver: "extensions.capture.capture.v1",
                 content: try json(
                     Metadata(
+                        submission_id: payload.submissionID.uuidString.lowercased(),
+                        payload_digest: digest,
                         captured_at: payload.capturedAt, entry: payload.entry,
                         origin: payload.origin))
             )
@@ -60,7 +59,7 @@ struct CaptureCommit: Encodable, Sendable {
                         content: try json(Attachment(mime_type: mime, filename: material.filename))
                     ))
                 graph.blocks.append(GraphBlock(id: id - 1, resolver: "core.image.v1", content: ""))
-                graph.blobs.append(Blob(block_id: id - 1, data_base64: bytes))
+                graph.blobs[id - 1] = bytes
                 graph.relations.append(GraphRelation(from_: id, to_: id - 1, content: "content"))
             }
             graph.relations.append(GraphRelation(from_: -1, to_: id, content: "material:\(index)"))
@@ -70,8 +69,7 @@ struct CaptureCommit: Encodable, Sendable {
             graph.blocks.append(GraphBlock(id: id, resolver: "core.text.v1", content: annotation))
             graph.relations.append(GraphRelation(from_: -1, to_: id, content: "annotation"))
         }
-        submission_id = payload.submissionID
-        payload_digest = try payload.canonicalDigest()
+        payload_digest = digest
         self.graph = graph
     }
 }
