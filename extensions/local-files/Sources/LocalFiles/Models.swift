@@ -3,10 +3,11 @@ import PeerCore
 
 public enum LocalFilesContract {
     public static let descriptor = NativeExtensionDescriptor(
-        name: "inkcre/local-files", distribution: "swift_bundled", version: "0.1.0")
+        name: "inkcre/local-files", distribution: "swift_bundled", version: "0.2.0")
     public static let sourceType = "extensions.local_files.directory.v1"
-    public static let resolver = "extensions.local_files.file.v1"
-    public static let extractor = "mac-native-text.v1"
+    public static let resolver = "extensions.local_files.file.v2"
+    public static let legacyResolver = "extensions.local_files.file.v1"
+    public static let extractor = "mac-native-content.v2"
 }
 
 public enum FileJSON {
@@ -127,6 +128,7 @@ public struct FileRecord: Sendable, Identifiable {
     public let id: Int
     public var metadata: FileMetadata
     public let bodyID: Int?
+    public var bodyResolver: String? = "core.text.v1"
     public var path: String {
         (try? PeerFileLocation(uri: metadata.location).path) ?? metadata.location
     }
@@ -135,12 +137,12 @@ public struct FileRecord: Sendable, Identifiable {
 
 public struct FileObservation: Sendable {
     public var metadata: FileMetadata
-    public let text: String?
+    public let content: String?
 
     func changes(_ previous: FileMetadata) -> Bool {
         var current = metadata
         current.observed_at = previous.observed_at
-        if text == nil { current.revision = previous.revision }
+        if content == nil { current.revision = previous.revision }
         return current != previous
     }
 }
@@ -157,4 +159,29 @@ public struct DirectoryBinding: Codable, Sendable, Identifiable {
         self.peerID = target.peerID
         self.bookmark = bookmark
     }
+}
+
+func bodyResolver(for format: String) -> String {
+    switch format {
+    case "html": "core.html.v1"
+    case "markdown": "core.markdown.v1"
+    default: "core.text.v1"
+    }
+}
+
+func storedFile(
+    id: Int, resolver: String, content: String, bodyID: Int?, bodyResolver: String?, storage: Int?
+) throws -> FileRecord {
+    let metadata = try FileJSON.decode(FileMetadata.self, content)
+    let allowed =
+        resolver == LocalFilesContract.legacyResolver
+        ? ["core.text.v1"] : ["core.text.v1", "core.html.v1", "core.markdown.v1"]
+    if let bodyID {
+        guard let bodyResolver, allowed.contains(bodyResolver), storage == nil else {
+            throw PeerError.invalid("文件正文类型不符。")
+        }
+        return FileRecord(id: id, metadata: metadata, bodyID: bodyID, bodyResolver: bodyResolver)
+    }
+    guard metadata.revision == nil else { throw PeerError.invalid("文件资料缺少成功修订的正文。") }
+    return FileRecord(id: id, metadata: metadata, bodyID: nil, bodyResolver: nil)
 }

@@ -132,29 +132,31 @@ public struct LocalFileClient: Sendable {
         return try await database.withConnection(for: target, password: password) { client in
             let rows = try await client.query(
                 """
-                SELECT b.id,b.content,t.id FROM inkcre.relations managed JOIN inkcre.blocks b ON b.id=managed.to_
+                SELECT b.id,b.resolver,b.content,t.id,t.resolver,t.storage FROM inkcre.relations managed JOIN inkcre.blocks b ON b.id=managed.to_
                 LEFT JOIN inkcre.relations body ON body.from_=b.id AND body.content='body'
-                LEFT JOIN inkcre.blocks t ON t.id=body.to_ AND t.resolver='core.text.v1'
-                WHERE managed.from_=\(block) AND managed.content='manages' AND b.resolver=\(LocalFilesContract.resolver) ORDER BY b.id
+                LEFT JOIN inkcre.blocks t ON t.id=body.to_
+                WHERE managed.from_=\(block) AND managed.content='manages' AND b.resolver IN (\(LocalFilesContract.resolver),\(LocalFilesContract.legacyResolver)) ORDER BY b.id
                 """, logger: PeerDatabase.logger)
             var records: [FileRecord] = []
             var seen: Set<Int> = []
-            for try await (id, content, bodyID) in rows.decode((Int, String, Int?).self) {
+            for try await (id, resolver, content, bodyID, bodyResolver, storage) in rows.decode(
+                (Int, String, String, Int?, String?, Int?).self)
+            {
                 guard seen.insert(id).inserted else { throw PeerError.invalid("文件资料存在重复正文关系。") }
                 records.append(
-                    FileRecord(
-                        id: id, metadata: try FileJSON.decode(FileMetadata.self, content),
-                        bodyID: bodyID))
+                    try storedFile(
+                        id: id, resolver: resolver, content: content, bodyID: bodyID,
+                        bodyResolver: bodyResolver, storage: storage))
             }
             return records
         }
     }
 
-    public func text(for record: FileRecord) async throws -> String? {
+    public func content(for record: FileRecord) async throws -> String? {
         guard let body = record.bodyID else { return nil }
         return try await database.withConnection(for: target, password: password) { client in
             let rows = try await client.query(
-                "SELECT content FROM inkcre.blocks WHERE id=\(body) AND resolver='core.text.v1'",
+                "SELECT content FROM inkcre.blocks WHERE id=\(body) AND resolver=\(record.bodyResolver) AND storage IS NULL",
                 logger: PeerDatabase.logger)
             for try await text in rows.decode(String.self) { return text }
             throw PeerError.needsAction("正文已移除，请刷新文件列表。")

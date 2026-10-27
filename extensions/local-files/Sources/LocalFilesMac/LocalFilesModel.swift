@@ -17,11 +17,11 @@ public final class LocalFilesModel: ObservableObject {
         }
     }
     @Published public var selectedFile: Int? {
-        didSet { if oldValue != selectedFile { loadText() } }
+        didSet { if oldValue != selectedFile { loadContent() } }
     }
-    @Published public private(set) var selectedText: String?
-    @Published public private(set) var textIssue: String?
-    @Published public private(set) var loadingText = false
+    @Published public private(set) var selectedContent: String?
+    @Published public private(set) var contentIssue: String?
+    @Published public private(set) var loadingContent = false
     @Published public private(set) var target: ConnectionTarget?
     @Published public private(set) var issue: String?
     @Published public private(set) var loading = false
@@ -38,7 +38,7 @@ public final class LocalFilesModel: ObservableObject {
     private var prepared: Set<UUID> = []
     private var timer: Task<Void, Never>?
     private var recordsTask: Task<Void, Never>?
-    private var textTask: Task<Void, Never>?
+    private var contentTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var actionTask: Task<Void, Never>?
     private var directoryPanel: NSOpenPanel?
@@ -106,7 +106,7 @@ public final class LocalFilesModel: ObservableObject {
         refreshTask?.cancel()
         timer?.cancel()
         recordsTask?.cancel()
-        textTask?.cancel()
+        contentTask?.cancel()
         for monitor in monitors.values { monitor.task?.cancel() }
         await actionTask?.value
         await refreshTask?.value
@@ -114,9 +114,9 @@ public final class LocalFilesModel: ObservableObject {
         timer = nil
         recordsTask?.cancel()
         await recordsTask?.value
-        textTask?.cancel()
-        await textTask?.value
-        loadingText = false
+        contentTask?.cancel()
+        await contentTask?.value
+        loadingContent = false
         for id in Array(monitors.keys) { await stopMonitor(id) }
     }
 
@@ -125,12 +125,12 @@ public final class LocalFilesModel: ObservableObject {
         directoryPanel = nil
         removal = nil
         recordsTask?.cancel()
-        textTask?.cancel()
+        contentTask?.cancel()
         target = connection
         selectedSource = nil
         selectedFile = nil
-        selectedText = nil
-        textIssue = nil
+        selectedContent = nil
+        contentIssue = nil
         sources = []
         records = []
         issue = nil
@@ -413,10 +413,11 @@ public final class LocalFilesModel: ObservableObject {
                 if let selectedFile, !records.contains(where: { $0.id == selectedFile }) {
                     self.selectedFile = nil
                 } else if previous?.bodyID != file?.bodyID
-                    || previous?.metadata.revision != file?.metadata.revision || textIssue != nil
-                    || (file?.bodyID != nil && selectedText == nil && !loadingText)
+                    || previous?.bodyResolver != file?.bodyResolver
+                    || previous?.metadata.revision != file?.metadata.revision || contentIssue != nil
+                    || (file?.bodyID != nil && selectedContent == nil && !loadingContent)
                 {
-                    loadText()
+                    loadContent()
                 }
             } catch {
                 if !Task.isCancelled { issue = PeerDatabase.failure(error).localizedDescription }
@@ -424,22 +425,22 @@ public final class LocalFilesModel: ObservableObject {
         }
     }
 
-    public func loadText() {
-        textTask?.cancel()
-        selectedText = nil
-        textIssue = nil
-        loadingText = false
+    public func loadContent() {
+        contentTask?.cancel()
+        selectedContent = nil
+        contentIssue = nil
+        loadingContent = false
         guard let file, file.bodyID != nil, let target else { return }
-        loadingText = true
-        textTask = Task {
-            defer { if !Task.isCancelled { loadingText = false } }
+        loadingContent = true
+        contentTask = Task {
+            defer { if !Task.isCancelled { loadingContent = false } }
             do {
-                let text = try await client(target).text(for: file)
+                let text = try await client(target).content(for: file)
                 guard !Task.isCancelled else { return }
-                selectedText = text
+                selectedContent = text
             } catch {
                 if !Task.isCancelled {
-                    textIssue = PeerDatabase.failure(error).localizedDescription
+                    contentIssue = PeerDatabase.failure(error).localizedDescription
                 }
             }
         }

@@ -36,11 +36,13 @@ public enum InfoBase {
         throw PeerError.connection("信息库未返回资料标识。")
     }
 
-    public static func updateBlock(_ id: Int, content: String, on connection: PostgresConnection)
+    public static func updateBlock(
+        _ id: Int, content: String, resolver: String? = nil, on connection: PostgresConnection
+    )
         async throws
     {
         let rows = try await connection.query(
-            "UPDATE inkcre.blocks SET content=\(content) WHERE id=\(id) RETURNING id",
+            "UPDATE inkcre.blocks SET content=\(content),resolver=COALESCE(\(resolver),resolver) WHERE id=\(id) RETURNING id",
             logger: PeerDatabase.logger)
         for try await _ in rows.decode(Int.self) { return }
         throw PeerError.needsAction("资料已被移除。")
