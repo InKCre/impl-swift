@@ -39,8 +39,9 @@ public struct LocalFilesView: View {
                     fileList.frame(minHeight: 150, maxHeight: .infinity)
                     if let file = model.file {
                         FileDetail(
-                            record: file, text: model.selectedText, loading: model.loadingText,
-                            issue: model.textIssue, retry: { model.loadText() },
+                            record: file, text: model.selectedContent,
+                            loading: model.loadingContent,
+                            issue: model.contentIssue, retry: { model.loadContent() },
                             open: { model.openOriginal(file) },
                             reveal: { model.openOriginal(file, reveal: true) }
                         )
@@ -186,8 +187,7 @@ private struct FileDetail: View {
                     Label(issue, systemImage: "exclamationmark.triangle")
                     Button("重试", action: retry)
                 } else if let text {
-                    Text(text.isEmpty ? "空白文本" : text).textSelection(.enabled).frame(
-                        maxWidth: .infinity, alignment: .leading)
+                    FileContentView(content: text, resolver: record.bodyResolver ?? "core.text.v1")
                 } else {
                     Text("尚无已收入正文").foregroundStyle(.secondary)
                 }

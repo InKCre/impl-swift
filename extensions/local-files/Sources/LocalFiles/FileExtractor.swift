@@ -3,7 +3,6 @@ import CryptoKit
 import Foundation
 import PDFKit
 import PeerCore
-import SwiftSoup
 import UniformTypeIdentifiers
 
 public enum FileExtractor {
@@ -110,10 +109,10 @@ public enum FileExtractor {
                     extractor: LocalFilesContract.extractor, extracted_at: Date(),
                     scope: format == "docx"
                         ? "main_document" : format == "pdf" ? "text_layer" : "text")
-            return FileObservation(metadata: metadata, text: text)
+            return FileObservation(metadata: metadata, content: text)
         } catch is CancellationError { throw CancellationError() } catch {
             metadata.issue = error.localizedDescription
-            return FileObservation(metadata: metadata, text: nil)
+            return FileObservation(metadata: metadata, content: nil)
         }
     }
 
@@ -142,15 +141,7 @@ public enum FileExtractor {
         default:
             let text = try decode(data)
             if format != "html" { return text }
-            let document = try SwiftSoup.parse(text)
-            try document.select("script,style,template").remove()
-            guard let body = document.body() else { throw PeerError.invalid("HTML 缺少正文。") }
-            for br in try body.select("br") { try br.replaceWith(TextNode("\n", "")) }
-            for block in try body.select("p,div,h1,h2,h3,h4,h5,h6,li,pre,blockquote,tr") {
-                try block.prependText("\n").appendText("\n")
-            }
-            return try body.text(trimAndNormaliseWhitespace: false).trimmingCharacters(
-                in: .whitespacesAndNewlines)
+            return try extractHTML(text)
         }
     }
 

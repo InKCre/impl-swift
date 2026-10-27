@@ -75,23 +75,28 @@ extension LocalFileClient {
                 var metadata = observation.metadata
                 if let record {
                     let current = try await currentRecord(record.id, anchor: anchor, on: connection)
-                    if observation.text == nil { metadata.revision = current.metadata.revision }
-                    if let text = observation.text {
+                    if observation.content == nil { metadata.revision = current.metadata.revision }
+                    if let content = observation.content {
                         if let body = current.bodyID {
-                            try await InfoBase.updateBlock(body, content: text, on: connection)
+                            try await InfoBase.updateBlock(
+                                body, content: content,
+                                resolver: bodyResolver(for: metadata.format), on: connection)
                         } else {
                             let body = try await InfoBase.createBlock(
-                                resolver: "core.text.v1", content: text, on: connection)
+                                resolver: bodyResolver(for: metadata.format), content: content,
+                                on: connection)
                             try await InfoBase.relate(
                                 record.id, to: body, content: "body", on: connection)
                         }
                     }
                     try await InfoBase.updateBlock(
-                        record.id, content: FileJSON.encode(metadata), on: connection)
+                        record.id, content: FileJSON.encode(metadata),
+                        resolver: observation.content == nil ? nil : LocalFilesContract.resolver,
+                        on: connection)
                 } else {
                     // The Source lock also protects a retry after a successful commit with a lost reply.
                     let existing = try await connection.query(
-                        "SELECT b.id FROM inkcre.relations r JOIN inkcre.blocks b ON b.id=r.to_ WHERE r.from_=\(anchor) AND r.content='manages' AND b.resolver=\(LocalFilesContract.resolver) AND b.content::jsonb->>'location'=\(metadata.location)",
+                        "SELECT b.id FROM inkcre.relations r JOIN inkcre.blocks b ON b.id=r.to_ WHERE r.from_=\(anchor) AND r.content='manages' AND b.resolver IN (\(LocalFilesContract.resolver),\(LocalFilesContract.legacyResolver)) AND b.content::jsonb->>'location'=\(metadata.location)",
                         logger: PeerDatabase.logger)
                     for try await _ in existing.decode(Int.self) {
                         throw PeerError.needsAction("资料已存在，正在重新核对目录。")
@@ -99,9 +104,10 @@ extension LocalFileClient {
                     let root = try await InfoBase.createBlock(
                         resolver: LocalFilesContract.resolver, content: FileJSON.encode(metadata),
                         on: connection)
-                    if let text = observation.text {
+                    if let content = observation.content {
                         let body = try await InfoBase.createBlock(
-                            resolver: "core.text.v1", content: text, on: connection)
+                            resolver: bodyResolver(for: metadata.format), content: content,
+                            on: connection)
                         try await InfoBase.relate(root, to: body, content: "body", on: connection)
                     }
                     try await InfoBase.relate(anchor, to: root, content: "manages", on: connection)
@@ -142,17 +148,20 @@ extension LocalFileClient {
     {
         let rows = try await connection.query(
             """
-            SELECT b.content,t.id FROM inkcre.blocks b
+            SELECT b.resolver,b.content,t.id,t.resolver,t.storage FROM inkcre.blocks b
             JOIN inkcre.relations managed ON managed.to_=b.id AND managed.from_=\(anchor) AND managed.content='manages'
             LEFT JOIN inkcre.relations body ON body.from_=b.id AND body.content='body'
-            LEFT JOIN inkcre.blocks t ON t.id=body.to_ AND t.resolver='core.text.v1'
-            WHERE b.id=\(id) AND b.resolver=\(LocalFilesContract.resolver) FOR UPDATE OF b
+            LEFT JOIN inkcre.blocks t ON t.id=body.to_
+            WHERE b.id=\(id) AND b.resolver IN (\(LocalFilesContract.resolver),\(LocalFilesContract.legacyResolver)) FOR UPDATE OF b
             """, logger: PeerDatabase.logger)
         var records: [FileRecord] = []
-        for try await (content, body) in rows.decode((String, Int?).self) {
+        for try await (resolver, content, body, bodyResolver, storage) in rows.decode(
+            (String, String, Int?, String?, Int?).self)
+        {
             records.append(
-                FileRecord(
-                    id: id, metadata: try FileJSON.decode(FileMetadata.self, content), bodyID: body)
+                try storedFile(
+                    id: id, resolver: resolver, content: content, bodyID: body,
+                    bodyResolver: bodyResolver, storage: storage)
             )
         }
         guard records.count == 1, let record = records.first else {
