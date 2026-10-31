@@ -9,6 +9,73 @@ import Testing
 @Suite(.serialized) @MainActor
 struct CaptureInteractionTests {
     init() { _ = NSApplication.shared }
+    @Test func hostPresentationCanArriveAfterStartAndChangeWindows() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let previousMenu = NSApp.mainMenu
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: "InKCre", action: nil, keyEquivalent: ""))
+        NSApp.mainMenu = menu
+        defer { NSApp.mainMenu = previousMenu }
+        let capture = CaptureExtension(
+            context: PeerHostContext(
+                identity: "dev.inkcre.presentation.\(UUID())", directory: directory))
+        let first = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
+            backing: .buffered, defer: false)
+        let second = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
+            backing: .buffered, defer: false)
+        let sheet = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
+            backing: .buffered, defer: false)
+        defer {
+            first.orderOut(nil)
+            second.orderOut(nil)
+            sheet.orderOut(nil)
+        }
+        try capture.start()
+        do {
+            let commands = try #require(menu.items.first { $0.title == "采集" }?.submenu)
+            let records = try #require(commands.items.first { $0.title == "采集记录" })
+            capture.updateHostPresentation(page: .capture, window: first)
+            // Swift Testing does not run the app event loop. Supply native windows directly
+            // to the same internal action policy used by menu and shortcut callbacks.
+            for _ in 0..<100 where !capture.canPerform(.paste, in: first) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(capture.canPerform(.paste, in: first))
+            // The extension can navigate before the Host projects a new page. The real pane wins.
+            #expect(
+                NSApp.sendAction(try #require(records.action), to: records.target, from: records))
+            #expect(!capture.canPerform(.paste, in: first))
+            capture.updateHostPresentation(page: .queue, window: first)
+            #expect(!capture.canPerform(.paste, in: first))
+            capture.updateHostPresentation(page: nil, window: first)
+            #expect(!capture.canPerform(.paste, in: first))
+            capture.updateHostPresentation(page: .capture, window: second)
+            #expect(!capture.canPerform(.paste, in: first))
+            #expect(capture.canPerform(.paste, in: second))
+            second.beginSheet(sheet) { _ in }
+            #expect(!capture.canPerform(.paste, in: second))
+            second.endSheet(sheet)
+            sheet.orderOut(nil)
+            try await capture.stop()
+            #expect(!capture.canPerform(.paste, in: first))
+            // Disabled/restarted Capture consumes the retained Host input without resynchronization.
+            try capture.start()
+            for _ in 0..<100 where !capture.canPerform(.paste, in: second) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(capture.canPerform(.paste, in: second))
+            try await capture.stop()
+        } catch {
+            try await capture.stop()
+            throw error
+        }
+    }
+
     @Test func emptyCaptureShortcutDoesNotOpenConnectionOrStartSubmission() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString)

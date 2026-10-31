@@ -36,6 +36,58 @@ private actor PausedRecovery: CaptureTransport {
     }
 }
 
+private actor RecordingSubmissions: CaptureTransport {
+    private(set) var submitted: [UUID] = []
+    func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? { nil }
+    func submit(_ record: CaptureRecord, secret: String) async throws -> CaptureResult {
+        submitted.append(record.id)
+        return CaptureResult(submissionID: record.id, rootBlockID: 123, committedAt: Date())
+    }
+}
+
+@Test func captureQueueKeepsSubmissionOrderAfterRetryAndReopening() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let service = "dev.inkcre.queue-order.\(UUID())"
+    defer {
+        SecItemDelete(
+            [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
+                as CFDictionary)
+        try? FileManager.default.removeItem(at: directory)
+    }
+    let target = ConnectionTarget(host: "localhost", database: "inkcre", username: "test")
+    let credentials = CredentialStore(service: service)
+    let connections = ConnectionSettings(url: directory.appendingPathComponent("connection.json"))
+    try await connections.save(target)
+    try credentials.save("test-password", for: target.id)
+    let url = directory.appendingPathComponent("capture.sqlite")
+    let store = try CaptureStore(url: url)
+    var drafts: [CaptureRecord] = []
+    for index in 0..<3 {
+        let draft = CaptureRecord(
+            payload: CapturePayload(
+                capturedAt: Date(timeIntervalSince1970: 1_780_000_000 + Double(index)),
+                materials: [Material(text: "第 \(index + 1) 份材料")]))
+        try await store.saveDraft(draft)
+        drafts.append(draft)
+    }
+    // Capture and draft creation order are independent from submission order.
+    var ids: [UUID] = []
+    for draft in [drafts[2], drafts[0], drafts[1]] {
+        _ = try await store.freeze(draft, target: target)
+        ids.append(draft.id)
+    }
+    // Updating the middle record must affect its retry delay, never its position.
+    _ = try await store.markDispatch(ids[1])
+    try await store.retry(ids[1])
+    let reopened = try CaptureStore(url: url)
+    let transport = RecordingSubmissions()
+    let queue = CaptureQueue(
+        store: reopened, connections: connections, credentials: credentials, client: transport)
+    try await queue.process(force: true)
+    #expect(await transport.submitted == ids)
+    #expect(try await reopened.records().allSatisfy { $0.state == .confirmed })
+}
+
 @Test func stoppingCaptureWaitsForRecoveryAndPreventsFurtherDispatch() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let service = "dev.inkcre.lifecycle.\(UUID().uuidString)"

@@ -14,7 +14,14 @@ public actor PeerDatabase {
     }
     private var pools: [UUID: Pool] = [:]
 
-    public init() {}
+    private let applicationVersion: String
+    public init(
+        applicationVersion: String = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString")
+            as? String ?? "development"
+    ) {
+        self.applicationVersion = applicationVersion
+    }
 
     public func client(for target: ConnectionTarget, password: String) throws -> PostgresClient {
         try target.validate()
@@ -35,9 +42,9 @@ public actor PeerDatabase {
         configuration.options.minimumConnections = 0
         configuration.options.maximumConnections = 2
         configuration.options.connectTimeout = .seconds(10)
-        // Bound server work too when a disconnected client cannot deliver cancellation.
+        // Detect a closed client during long queries; bound server work if a lost network hides it.
         configuration.options.additionalStartupParameters = [
-            ("options", "-c statement_timeout=30000")
+            ("options", "-c statement_timeout=30000 -c client_connection_check_interval=1000")
         ]
         let client = PostgresClient(configuration: configuration, backgroundLogger: Self.logger)
         let task = Task { await client.run() }
@@ -59,12 +66,13 @@ public actor PeerDatabase {
         let client = try client(for: target, password: password)
         if pools[target.id]?.registered == true { return }
         let name = Host.current().localizedName ?? "InKCre Mac"
+        let applicationVersion = self.applicationVersion
         try await withConnection(for: target, password: password) { connection in
             try await connection.withTransaction(logger: Self.logger) { connection in
                 try await connection.query(
                     """
                     INSERT INTO inkcre.peers (id,name,application_version,capabilities,config_schema,config,labels)
-                    VALUES (\(target.peerID),\(name),'0.1.0','[]','{}','{}',ARRAY['macOS'])
+                    VALUES (\(target.peerID),\(name),\(applicationVersion),'[]','{}','{}',ARRAY['macOS'])
                     ON CONFLICT (id) DO UPDATE SET application_version=EXCLUDED.application_version
                     """, logger: Self.logger)
                 try await connection.query(
@@ -77,16 +85,24 @@ public actor PeerDatabase {
     /// Keep row consumption and transactions inside this scope so cancellation closes their lease.
     public nonisolated func withConnection<Result: Sendable>(
         for target: ConnectionTarget, password: String,
-        _ operation: @escaping @Sendable (PostgresConnection) async throws -> Result
+        _ operation: @escaping @Sendable (PeerConnection) async throws -> Result
     ) async throws -> Result {
         let client = try await client(for: target, password: password)
         return try await withThrowingTaskGroup(of: Result.self) { group in
             group.addTask {
                 try await client.withConnection { connection in
-                    try await withTaskCancellationHandler {
-                        try Task.checkCancellation()
-                        do { return try await operation(connection) } catch {
-                            if Task.isCancelled { throw CancellationError() }
+                    let borrowed = PeerConnection(connection: connection)
+                    return try await withTaskCancellationHandler {
+                        do {
+                            try Task.checkCancellation()
+                            let result = try await operation(borrowed)
+                            try Task.checkCancellation()
+                            return result
+                        } catch {
+                            if Task.isCancelled {
+                                await borrowed.close()
+                                throw CancellationError()
+                            }
                             throw error
                         }
                     } onCancel: {
@@ -111,10 +127,9 @@ public actor PeerDatabase {
                     do {
                         try await self.withConnection(for: pool.target, password: pool.password) {
                             connection in
-                            let rows = try await connection.query(
+                            try await connection.query(
                                 "SELECT inkcre.renew_peer_lease(\(pool.target.peerID),120)",
                                 logger: Self.logger)
-                            for try await _ in rows {}
                         }
                         return (id, nil)
                     } catch { return (id, Self.failure(error).localizedDescription) }

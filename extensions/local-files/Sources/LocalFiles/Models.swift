@@ -2,8 +2,8 @@ import Foundation
 import PeerCore
 
 public enum LocalFilesContract {
-    public static let descriptor = NativeExtensionDescriptor(
-        name: "inkcre/local-files", distribution: "swift_bundled", version: "0.2.0")
+    public static let descriptor = NativeExtensionDescriptor.bundled(
+        resourceBundle: "InKCreLocalFiles_LocalFiles", developmentBundle: .module)
     public static let sourceType = "extensions.local_files.directory.v1"
     public static let resolver = "extensions.local_files.file.v2"
     public static let legacyResolver = "extensions.local_files.file.v1"

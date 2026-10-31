@@ -13,7 +13,7 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
         database: try #require(env["INKCRE_CAPTURE_TEST_DATABASE"]), username: "inkcre_core",
         tls: .disable)
     let password = try #require(env["INKCRE_CAPTURE_TEST_PASSWORD"])
-    let database = PeerDatabase()
+    let database = PeerDatabase(applicationVersion: "swift-acceptance")
     let client = CaptureClient(database: database)
     let pg = try await database.client(for: target, password: password)
     struct Fixture: Decodable { let payload: CapturePayload }
@@ -33,6 +33,9 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     let results = try await [a, b, c]
     let result = try #require(results.first)
     #expect(results.allSatisfy { $0 == result })
+    let versions = try await pg.query(
+        "SELECT application_version FROM inkcre.peers WHERE id=\(target.peerID)")
+    #expect(try await versions.decode(String.self).first { _ in true } == "swift-acceptance")
     let rows = try await pg.query(
         """
         WITH RECURSIVE captured(id) AS (SELECT \(result.rootBlockID)::integer UNION
@@ -91,11 +94,16 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
         _ in true
     }
     await #expect(throws: (any Error).self) {
-        try await pg.withTransaction(logger: PeerDatabase.logger) { connection in
-            _ = try await InfoBase.persist(
-                blocks: [GraphBlock(id: -1, resolver: "core.text.v1", content: "must rollback")],
-                relations: [GraphRelation(from_: -1, to_: -999, content: "invalid")], blobs: [:],
-                on: connection)
+        try await database.withConnection(for: target, password: password) { connection in
+            try await connection.withTransaction(logger: PeerDatabase.logger) { connection in
+                _ = try await InfoBase.persist(
+                    blocks: [
+                        GraphBlock(id: -1, resolver: "core.text.v1", content: "must rollback")
+                    ],
+                    relations: [GraphRelation(from_: -1, to_: -999, content: "invalid")],
+                    blobs: [:],
+                    on: connection)
+            }
         }
     }
     let after = try await pg.query(
@@ -204,9 +212,8 @@ func cancellingAStalledQueryReleasesItsConnectionAndRollsBack() async throws {
                 try await connection.query(
                     "INSERT INTO inkcre.blocks(resolver,content) VALUES ('core.text.v1',\(marker))",
                     logger: PeerDatabase.logger)
-                let rows = try await connection.query(
+                try await connection.query(
                     PostgresQuery(unsafeSQL: sleepingQuery), logger: PeerDatabase.logger)
-                for try await _ in rows {}
             }
         }
     }
@@ -226,14 +233,23 @@ func cancellingAStalledQueryReleasesItsConnectionAndRollsBack() async throws {
     do {
         try await blocked.value
         Issue.record("Cancelled transaction unexpectedly completed")
-    } catch {}
+    } catch { #expect(error is CancellationError) }
     #expect(start.duration(to: .now) < .seconds(2))
+    var serverStillRunning = true
+    for _ in 0..<150 {
+        let rows = try await pg.query(
+            "SELECT count(*)::integer FROM pg_stat_activity WHERE datname=current_database() AND query=\(sleepingQuery)"
+        )
+        for try await count in rows.decode(Int.self) { serverStillRunning = count > 0 }
+        if !serverStillRunning { break }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(!serverStillRunning)
     let count = try await database.withConnection(for: target, password: password) { connection in
         let rows = try await connection.query(
             "SELECT count(*)::integer FROM inkcre.blocks WHERE content=\(marker)",
             logger: PeerDatabase.logger)
-        for try await count in rows.decode(Int.self) { return count }
-        return -1
+        return try rows.first?.decode(Int.self) ?? -1
     }
     #expect(count == 0)
     await database.shutdown()

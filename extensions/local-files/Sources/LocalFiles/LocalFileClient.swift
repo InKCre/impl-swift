@@ -51,9 +51,11 @@ public struct LocalFileClient: Sendable {
                 "SELECT id,config::text,block,state::text FROM inkcre.sources WHERE type=\(LocalFilesContract.sourceType) AND config->>'peer'=\(target.peerID.uuidString.lowercased()) ORDER BY id",
                 logger: PeerDatabase.logger)
             var sources: [DirectorySource] = []
-            for try await (id, config, block, state) in rows.decode(
-                (Int, String, Int?, String).self)
-            {
+            for row in rows {
+                try Task.checkCancellation()
+                let (id, config, block, state) = try row.decode(
+                    (Int, String, Int?, String).self)
+
                 sources.append(try decodeSource(id: id, config: config, block: block, state: state))
             }
             return sources
@@ -74,13 +76,19 @@ public struct LocalFileClient: Sendable {
                 let existing = try await connection.query(
                     "SELECT id FROM inkcre.sources WHERE type=\(LocalFilesContract.sourceType) AND config->>'peer'=\(target.peerID.uuidString.lowercased()) AND config->>'path'=\(path)",
                     logger: PeerDatabase.logger)
-                for try await _ in existing.decode(Int.self) {
+                for row in existing {
+                    try Task.checkCancellation()
+                    let _ = try row.decode(Int.self)
+
                     throw PeerError.needsAction("这个目录已经添加。")
                 }
                 let rows = try await connection.query(
                     "INSERT INTO inkcre.sources(type,nickname,config) VALUES (\(LocalFilesContract.sourceType),\(URL(fileURLWithPath: path).lastPathComponent),\(serialized)::jsonb) RETURNING id",
                     logger: PeerDatabase.logger)
-                for try await id in rows.decode(Int.self) {
+                for row in rows {
+                    try Task.checkCancellation()
+                    let id = try row.decode(Int.self)
+
                     struct Anchor: Encodable {
                         let id: Int
                         let type: String
@@ -139,9 +147,11 @@ public struct LocalFileClient: Sendable {
                 """, logger: PeerDatabase.logger)
             var records: [FileRecord] = []
             var seen: Set<Int> = []
-            for try await (id, resolver, content, bodyID, bodyResolver, storage) in rows.decode(
-                (Int, String, String, Int?, String?, Int?).self)
-            {
+            for row in rows {
+                try Task.checkCancellation()
+                let (id, resolver, content, bodyID, bodyResolver, storage) = try row.decode(
+                    (Int, String, String, Int?, String?, Int?).self)
+
                 guard seen.insert(id).inserted else { throw PeerError.invalid("文件资料存在重复正文关系。") }
                 records.append(
                     try storedFile(
@@ -158,13 +168,17 @@ public struct LocalFileClient: Sendable {
             let rows = try await client.query(
                 "SELECT content FROM inkcre.blocks WHERE id=\(body) AND resolver=\(record.bodyResolver) AND storage IS NULL",
                 logger: PeerDatabase.logger)
-            for try await text in rows.decode(String.self) { return text }
+            for row in rows {
+                try Task.checkCancellation()
+                let text = try row.decode(String.self)
+                return text
+            }
             throw PeerError.needsAction("正文已移除，请刷新文件列表。")
         }
     }
 
     func locked(
-        _ id: Int, on connection: PostgresConnection, expected: DirectoryConfig? = nil,
+        _ id: Int, on connection: PeerConnection, expected: DirectoryConfig? = nil,
         requireEnabled: Bool = true
     ) async throws -> DirectorySource {
         try await PeerDatabase.requireSelection(
@@ -172,7 +186,10 @@ public struct LocalFileClient: Sendable {
         let rows = try await connection.query(
             "SELECT id,config::text,block,state::text FROM inkcre.sources WHERE id=\(id) AND type=\(LocalFilesContract.sourceType) FOR UPDATE",
             logger: PeerDatabase.logger)
-        for try await (id, config, block, state) in rows.decode((Int, String, Int?, String).self) {
+        for row in rows {
+            try Task.checkCancellation()
+            let (id, config, block, state) = try row.decode((Int, String, Int?, String).self)
+
             let source = try decodeSource(id: id, config: config, block: block, state: state)
             if let expected, source.config != expected || (requireEnabled && !source.config.enabled)
             {
