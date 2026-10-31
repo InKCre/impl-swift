@@ -27,29 +27,37 @@ public struct GraphRelation: Sendable, Encodable {
 /// Uses the caller's transaction; storage pointers and byte mechanics belong to the Host.
 public enum InfoBase {
     public static func createBlock(
-        resolver: String, content: String, on connection: PostgresConnection
+        resolver: String, content: String, on connection: PeerConnection
     ) async throws -> Int {
         let rows = try await connection.query(
             "INSERT INTO inkcre.blocks(resolver,content) VALUES (\(resolver),\(content)) RETURNING id",
             logger: PeerDatabase.logger)
-        for try await id in rows.decode(Int.self) { return id }
+        for row in rows {
+            try Task.checkCancellation()
+            let id = try row.decode(Int.self)
+            return id
+        }
         throw PeerError.connection("信息库未返回资料标识。")
     }
 
     public static func updateBlock(
-        _ id: Int, content: String, resolver: String? = nil, on connection: PostgresConnection
+        _ id: Int, content: String, resolver: String? = nil, on connection: PeerConnection
     )
         async throws
     {
         let rows = try await connection.query(
             "UPDATE inkcre.blocks SET content=\(content),resolver=COALESCE(\(resolver),resolver) WHERE id=\(id) RETURNING id",
             logger: PeerDatabase.logger)
-        for try await _ in rows.decode(Int.self) { return }
+        for row in rows {
+            try Task.checkCancellation()
+            let _ = try row.decode(Int.self)
+            return
+        }
         throw PeerError.needsAction("资料已被移除。")
     }
 
     public static func relate(
-        _ from: Int, to: Int, content: String, on connection: PostgresConnection
+        _ from: Int, to: Int, content: String, on connection: PeerConnection
     ) async throws {
         try await connection.query(
             "INSERT INTO inkcre.relations(from_,to_,content) VALUES (\(from),\(to),\(content))",
@@ -58,7 +66,7 @@ public enum InfoBase {
 
     public static func persist(
         blocks: [GraphBlock], relations: [GraphRelation],
-        blobs: [Int: Data], on connection: PostgresConnection
+        blobs: [Int: Data], on connection: PeerConnection
     ) async throws -> [Int: Int] {
         var ids: [Int: Int] = [:]
         for block in blocks {
@@ -76,7 +84,11 @@ public enum InfoBase {
                 """
                 INSERT INTO inkcre.blocks(resolver,content,storage) VALUES (\(block.resolver),\(content),\(storage)) RETURNING id
                 """, logger: PeerDatabase.logger)
-            for try await id in rows.decode(Int.self) { ids[block.id] = id }
+            for row in rows {
+                try Task.checkCancellation()
+                let id = try row.decode(Int.self)
+                ids[block.id] = id
+            }
         }
         for relation in relations {
             guard let from = ids[relation.from_], let to = ids[relation.to_] else {

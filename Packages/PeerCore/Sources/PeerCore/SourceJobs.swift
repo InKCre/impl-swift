@@ -9,7 +9,7 @@ public struct SourceJob: Sendable {
 public enum SourceJobs {
     public static let type = "core.source.collect.v1"
 
-    public static func submit(source: Int, on connection: PostgresConnection) async throws -> Int {
+    public static func submit(source: Int, on connection: PeerConnection) async throws -> Int {
         let parameters = "{\"source\":\(source),\"config\":{}}"
         let rows = try await connection.query(
             """
@@ -17,11 +17,15 @@ public enum SourceJobs {
             SELECT id,\(parameters)::jsonb,default_timeout_seconds,'pending' FROM inkcre.job_types WHERE id=\(type)
             RETURNING id
             """, logger: PeerDatabase.logger)
-        for try await id in rows.decode(Int.self) { return id }
+        for row in rows {
+            try Task.checkCancellation()
+            let id = try row.decode(Int.self)
+            return id
+        }
         throw PeerError.needsAction("信息库尚未登记来源扫描命令。")
     }
 
-    public static func pending(source: Int, on client: PostgresConnection) async throws -> [Int] {
+    public static func pending(source: Int, on client: PeerConnection) async throws -> [Int] {
         try await client.query(
             "UPDATE inkcre.jobs SET status='timed_out' WHERE type=\(type) AND status='running' AND parameters->'source'=to_jsonb(\(source)::bigint) AND started_at + timeout_seconds * interval '1 second' < now()",
             logger: PeerDatabase.logger)
@@ -32,12 +36,16 @@ public enum SourceJobs {
             "SELECT id FROM inkcre.jobs WHERE type=\(type) AND status='pending' AND parameters->'source'=to_jsonb(\(source)::bigint) ORDER BY id",
             logger: PeerDatabase.logger)
         var ids: [Int] = []
-        for try await id in rows.decode(Int.self) { ids.append(id) }
+        for row in rows {
+            try Task.checkCancellation()
+            let id = try row.decode(Int.self)
+            ids.append(id)
+        }
         return ids
     }
 
     /// Eligibility is checked under the Source lock by the capability before claiming.
-    public static func claim(_ id: Int, source: Int, on connection: PostgresConnection) async throws
+    public static func claim(_ id: Int, source: Int, on connection: PeerConnection) async throws
         -> SourceJob?
     {
         let rows = try await connection.query(
@@ -47,19 +55,25 @@ public enum SourceJobs {
               AND COALESCE(parameters->'config','{}'::jsonb)='{}'::jsonb
             RETURNING id,started_at + timeout_seconds * interval '1 second'
             """, logger: PeerDatabase.logger)
-        for try await (id, deadline) in rows.decode((Int, Date).self) {
+        for row in rows {
+            try Task.checkCancellation()
+            let (id, deadline) = try row.decode((Int, Date).self)
+
             return SourceJob(id: id, deadline: deadline)
         }
         return nil
     }
 
-    public static func check(_ job: SourceJob, on client: PostgresConnection) async throws {
+    public static func check(_ job: SourceJob, on client: PeerConnection) async throws {
         try Task.checkCancellation()
         if Date() >= job.deadline { throw PeerError.needsAction("扫描已超时。") }
         let rows = try await client.query(
             "SELECT status::text,abort_requested FROM inkcre.jobs WHERE id=\(job.id)",
             logger: PeerDatabase.logger)
-        for try await (status, aborted) in rows.decode((String, Bool).self) {
+        for row in rows {
+            try Task.checkCancellation()
+            let (status, aborted) = try row.decode((String, Bool).self)
+
             guard status == "running", !aborted else { throw CancellationError() }
             return
         }
@@ -67,7 +81,7 @@ public enum SourceJobs {
     }
 
     public static func close(
-        _ job: SourceJob, status: String, state: String, on client: PostgresConnection
+        _ job: SourceJob, status: String, state: String, on client: PeerConnection
     ) async throws {
         guard ["finished", "failed", "timed_out", "aborted"].contains(status) else {
             throw PeerError.invalid("无效的任务终态。")

@@ -36,15 +36,17 @@ extension PeerDatabase {
     }
 
     public static func requireSelection(
-        _ descriptor: NativeExtensionDescriptor, peerID: UUID, on connection: PostgresConnection
+        _ descriptor: NativeExtensionDescriptor, peerID: UUID, on connection: PeerConnection
     ) async throws {
         let rows = try await connection.query(
             """
             SELECT distribution,version,enabled FROM inkcre.extension_peer_participations
             WHERE name=\(descriptor.name) AND peer_id=\(peerID) FOR SHARE
             """, logger: Self.logger)
-        for try await (distribution, version, enabled) in rows.decode((String?, String, Bool).self)
-        {
+        for row in rows {
+            try Task.checkCancellation()
+            let (distribution, version, enabled) = try row.decode((String?, String, Bool).self)
+
             guard distribution == descriptor.distribution, version == descriptor.version else {
                 throw PeerError.needsAction("此 Peer 选择的扩展版本不在当前应用中，请在扩展设置中对该信息库启用本机版本。")
             }

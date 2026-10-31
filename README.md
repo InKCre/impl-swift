@@ -51,7 +51,7 @@ python3 scripts/check-database.py --impl-py /path/to/impl-py \
   --postgres-bin "$(brew --prefix postgresql@17)/bin"
 ```
 
-此入口仅在临时目录创建独立 PostgreSQL cluster、随机回环端口和随机凭据，调用权威 `scripts/database.py init --profile development`／`ready`，开启 Capture 和 Local Files 的全部数据库及隐藏原生窗口旅程，结束后停止并删除该临时 cluster。不会使用现有 development／preview 库，也不启动系统 PostgreSQL 服务。缺工具、迁移失败或验收失败均返回非零。
+此入口仅在临时目录创建独立 PostgreSQL cluster、随机回环端口和随机凭据，调用权威 `scripts/database.py init --profile development`／`ready`，开启 Capture 和 Local Files 的全部数据库及隐藏原生窗口旅程，结束后停止并删除该临时 cluster。不会使用现有 development／preview 库，也不启动系统 PostgreSQL 服务。缺工具、迁移失败或验收失败均返回非零。测试输出即时刷新；Swift 测试进程最多运行 10 分钟，超时会终止其子进程及后代进程组、清理自有 cluster 并返回失败，不能视为验收通过。
 
 已有独占且完成权威迁移的一次性数据库时，可以消费权限为 0600 的 JSON descriptor：
 
@@ -60,6 +60,10 @@ python3 scripts/check-database.py --descriptor /private/path/swift-test.json
 ```
 
 descriptor 必须声明 `disposable: true`，包含 `host`（回环）、`port`、`database`、`username: "inkcre_core"` 和 `password`；调用者负责该库的独占性与销毁。凭据通过子进程环境传入，不 source dotenv，也不放入命令参数。脚本不修改 schema；`INKCRE_LAYOUT_EVIDENCE_DIR` 可指定已有目录保存合成界面的实际渲染图。这些检查不代表系统授权提示、真实跨应用选区、多屏实体环境或公证已通过。
+
+PeerCore 的 `withConnection` 借出限于作用域内使用的连接；`query` 明确收集 `[PostgresRow]` 后返回，调用方逐行解码并检查取消，不承诺流式背压。检查连接状态与发出查询必须留在同一次 NIO event loop 执行中，避免关闭后的驱动 promise 无人完成；不要绕回原始异步驱动查询。当前目录记录读取仍会同时持有查询行和最终记录数组，大结果的峰值内存不是原来的流式水平。
+
+原生会话以运行角色设置 `client_connection_check_interval=1000`，在项目使用的 PostgreSQL 17/macOS 或 Linux 上，每秒检查执行中的查询是否已失去客户端；代价是长查询增加周期性检查。它检测内核已报告的断连，不是同步回滚确认；`statement_timeout=30000` 继续限制无法及时检测的服务器工作。具体平台与网络边界见 [PostgreSQL 17 连接配置](https://www.postgresql.org/docs/17/runtime-config-connection.html#GUC-CLIENT-CONNECTION-CHECK-INTERVAL)。
 
 ## 连接信息库
 

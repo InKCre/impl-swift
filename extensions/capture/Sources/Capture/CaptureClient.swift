@@ -34,11 +34,14 @@ public struct CaptureClient: CaptureTransport {
         """
     }
 
-    private static func result(from rows: PostgresRowSequence, id: UUID, digest: String)
-        async throws
+    private static func result(from rows: [PostgresRow], id: UUID, digest: String)
+        throws
         -> CaptureResult?
     {
-        for try await (saved, root, date) in rows.decode((String, Int, Date).self) {
+        for row in rows {
+            try Task.checkCancellation()
+            let (saved, root, date) = try row.decode((String, Int, Date).self)
+
             guard saved == digest else { throw PeerError.needsAction("提交身份与已保存材料冲突，原材料已保留。") }
             return CaptureResult(submissionID: id, rootBlockID: root, committedAt: date)
         }
@@ -77,7 +80,10 @@ public struct CaptureClient: CaptureTransport {
                     let rows = try await connection.query(
                         "SELECT created_at FROM inkcre.blocks WHERE id=\(root)",
                         logger: PeerDatabase.logger)
-                    for try await date in rows.decode(Date.self) {
+                    for row in rows {
+                        try Task.checkCancellation()
+                        let date = try row.decode(Date.self)
+
                         return CaptureResult(
                             submissionID: record.id, rootBlockID: root, committedAt: date)
                     }

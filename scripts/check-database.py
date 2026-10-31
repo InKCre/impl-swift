@@ -8,10 +8,12 @@ import json
 import os
 from pathlib import Path
 import secrets
+import signal
 import shutil
 import socket
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -30,17 +32,62 @@ def test_environment(descriptor):
                for key in ("database", "password")):
         raise ValueError("descriptor database and password are required")
     env = os.environ.copy()
+    env["NSUnbufferedIO"] = "YES"
     for prefix in ("INKCRE_CAPTURE_TEST", "INKCRE_FILES_TEST"):
         env.update({f"{prefix}_DATABASE": descriptor["database"],
                     f"{prefix}_PORT": str(port), f"{prefix}_PASSWORD": descriptor["password"]})
     return env
 
 
+def run_tests(command, env, timeout=600):
+    process = subprocess.Popen(command, cwd=ROOT, env=env, start_new_session=True)
+    try:
+        status = process.wait(timeout=timeout)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        print("Database/native checks did not finish; stopping the test process group.", flush=True)
+        # SwiftPM's testing helper creates its own process group. Snapshot only descendants
+        # of our child before stopping the parent, so orphaned helpers remain identifiable.
+        table = [tuple(map(int, row.split())) for row in subprocess.check_output(
+            ["ps", "-axo", "pid=,ppid=,pgid="], text=True).splitlines()]
+        owned = {process.pid}
+        while True:
+            children = {pid for pid, parent, _ in table if parent in owned}
+            if children <= owned:
+                break
+            owned.update(children)
+        groups = {process.pid} | {group for pid, _, group in table
+                                  if pid in owned and group in owned}
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            for group in groups:
+                try:
+                    os.killpg(group, sig)
+                except ProcessLookupError:
+                    pass
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+        deadline = time.monotonic() + 5
+        while groups:
+            for group in tuple(groups):
+                try:
+                    os.killpg(group, 0)
+                except ProcessLookupError:
+                    groups.remove(group)
+            if groups and time.monotonic() >= deadline:
+                raise RuntimeError("test process groups did not terminate after SIGKILL")
+            if groups:
+                time.sleep(0.05)
+        raise
+    if status:
+        raise subprocess.CalledProcessError(status, command)
+
+
 def check(descriptor):
     env = test_environment(descriptor)
     print("Running Capture and Local Files database/native checks in the disposable database.", flush=True)
-    subprocess.run(["swift", "test", "--disable-automatic-resolution", "--no-parallel", "--jobs",
-                    env.get("SWIFT_JOBS", "2")], cwd=ROOT, env=env, check=True)
+    run_tests(["swift", "test", "--disable-automatic-resolution", "--no-parallel", "--jobs",
+               env.get("SWIFT_JOBS", "2")], env)
 
 
 def with_cluster(impl_py, postgres_bin):

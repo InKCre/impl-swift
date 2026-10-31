@@ -98,7 +98,10 @@ extension LocalFileClient {
                     let existing = try await connection.query(
                         "SELECT b.id FROM inkcre.relations r JOIN inkcre.blocks b ON b.id=r.to_ WHERE r.from_=\(anchor) AND r.content='manages' AND b.resolver IN (\(LocalFilesContract.resolver),\(LocalFilesContract.legacyResolver)) AND b.content::jsonb->>'location'=\(metadata.location)",
                         logger: PeerDatabase.logger)
-                    for try await _ in existing.decode(Int.self) {
+                    for row in existing {
+                        try Task.checkCancellation()
+                        let _ = try row.decode(Int.self)
+
                         throw PeerError.needsAction("资料已存在，正在重新核对目录。")
                     }
                     let root = try await InfoBase.createBlock(
@@ -142,7 +145,7 @@ extension LocalFileClient {
         }
     }
 
-    private func currentRecord(_ id: Int, anchor: Int, on connection: PostgresConnection)
+    private func currentRecord(_ id: Int, anchor: Int, on connection: PeerConnection)
         async throws
         -> FileRecord
     {
@@ -155,9 +158,11 @@ extension LocalFileClient {
             WHERE b.id=\(id) AND b.resolver IN (\(LocalFilesContract.resolver),\(LocalFilesContract.legacyResolver)) FOR UPDATE OF b
             """, logger: PeerDatabase.logger)
         var records: [FileRecord] = []
-        for try await (resolver, content, body, bodyResolver, storage) in rows.decode(
-            (String, String, Int?, String?, Int?).self)
-        {
+        for row in rows {
+            try Task.checkCancellation()
+            let (resolver, content, body, bodyResolver, storage) = try row.decode(
+                (String, String, Int?, String?, Int?).self)
+
             records.append(
                 try storedFile(
                     id: id, resolver: resolver, content: content, bodyID: body,

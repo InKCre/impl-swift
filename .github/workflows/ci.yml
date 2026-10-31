@@ -15,6 +15,7 @@ jobs:
   check:
     name: impl-swift checks
     runs-on: macos-15
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
     steps:
@@ -49,6 +50,7 @@ jobs:
           brew install postgresql@17 pgvector
           brew link --overwrite --force postgresql@17
       - name: 一次性数据库与原生主流程验收
+        timeout-minutes: 12
         run: >-
           python3 scripts/check-database.py --impl-py .verification/impl-py
           --postgres-bin "$(brew --prefix postgresql@17)/bin"
