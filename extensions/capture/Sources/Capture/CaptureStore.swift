@@ -58,27 +58,33 @@ public actor CaptureStore {
             guard sqlite3_step(statement) == SQLITE_ROW else { throw database.error() }
             return sqlite3_column_int(statement, 0)
         }
-        guard version == 0 || version == 1 else {
-            throw PeerError.storage("本地数据来自较新版本，请更新 InKCre 后再打开。")
+        guard version == 0 || version == 2 else {
+            throw PeerError.storage("本地数据格式与当前开发版不兼容，原文件已保留。")
         }
         try database.execute(
             """
             PRAGMA journal_mode=WAL;
             PRAGMA synchronous=FULL;
-            CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, body BLOB NOT NULL);
-            PRAGMA user_version=1;
+            CREATE TABLE IF NOT EXISTS records (
+                id TEXT PRIMARY KEY, body BLOB NOT NULL, queue_position INTEGER UNIQUE
+            );
+            PRAGMA user_version=2;
             """)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     public func records() throws -> [CaptureRecord] {
-        try records(query: "SELECT body FROM records")
+        try records(query: "SELECT body FROM records").sorted { $0.updatedAt > $1.updatedAt }
     }
 
     public func pendingRecords() throws -> [CaptureRecord] {
         try records(
             query:
-                "SELECT body FROM records WHERE json_extract(CAST(body AS TEXT), '$.state') IN ('pending','unknown')"
+                """
+                SELECT body FROM records
+                WHERE json_extract(CAST(body AS TEXT), '$.state') IN ('pending','unknown')
+                ORDER BY queue_position
+                """
         )
     }
 
@@ -91,7 +97,7 @@ public actor CaptureStore {
                 guard result == SQLITE_ROW else { throw database.error() }
                 records.append(try CaptureJSON.decode(CaptureRecord.self, from: data(statement)))
             }
-            return records.sorted { $0.updatedAt > $1.updatedAt }
+            return records
         }
     }
 
@@ -135,6 +141,17 @@ public actor CaptureStore {
             frozen.message = nil
             frozen.updatedAt = Date()
             try save(frozen)
+            // Admission order is independent of capture time, UI edits and retry timestamps.
+            try database.statement(
+                """
+                UPDATE records
+                SET queue_position=(SELECT COALESCE(MAX(queue_position),0)+1 FROM records)
+                WHERE id=?
+                """
+            ) { statement in
+                sqlite3_bind_text(statement, 1, draft.id.uuidString, -1, transient)
+                guard sqlite3_step(statement) == SQLITE_DONE else { throw database.error() }
+            }
             try database.execute("COMMIT")
             return frozen
         } catch {
@@ -219,7 +236,7 @@ public actor CaptureStore {
         value.message = nil
         value.payload = nil
         value.updatedAt = Date()
-        // One row replacement atomically keeps the receipt while discarding local material.
+        // One row update atomically keeps the receipt while discarding local material.
         try save(value)
     }
 
@@ -252,8 +269,12 @@ public actor CaptureStore {
 
     private func save(_ record: CaptureRecord) throws {
         let encoded = try CaptureJSON.encode(record)
-        try database.statement("INSERT OR REPLACE INTO records(id,body) VALUES (?,?)") {
-            statement in
+        try database.statement(
+            """
+            INSERT INTO records(id,body) VALUES (?,?)
+            ON CONFLICT(id) DO UPDATE SET body=excluded.body
+            """
+        ) { statement in
             sqlite3_bind_text(statement, 1, record.id.uuidString, -1, transient)
             let result = encoded.withUnsafeBytes { bytes in
                 sqlite3_bind_blob(statement, 2, bytes.baseAddress, Int32(bytes.count), transient)

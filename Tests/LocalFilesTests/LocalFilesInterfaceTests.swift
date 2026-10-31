@@ -123,16 +123,44 @@ struct LocalFilesInterfaceTests {
         try Data("# 自动监视后的正文".utf8).write(to: url, options: .atomic)
         try await until { model.selectedContent == "# 自动监视后的正文" }
         let source = try #require(model.source)
-        model.toggle(source)
+        let client = LocalFileClient(
+            target: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]))
+        let other = ConnectionTarget(
+            host: target.host, port: target.port, database: target.database,
+            username: target.username, tls: target.tls)
+        try context.credentials.save(
+            try #require(env["INKCRE_FILES_TEST_PASSWORD"]), for: other.id)
+        try await context.connections.save(other)
+        await model.connectionDidChange(other)
+        #expect(model.sources.isEmpty && model.records.isEmpty)
+        try Data("# 后台目录继续监视".utf8).write(to: url, options: .atomic)
+        try await until {
+            guard
+                let record = try? await client.records(source: source).first(where: {
+                    $0.id == file.id
+                })
+            else { return false }
+            return (try? await client.content(for: record)) == "# 后台目录继续监视"
+        }
+        #expect(model.target?.id == other.id && model.sources.isEmpty && model.records.isEmpty)
+        _ = try await context.connections.select(target.id)
+        await model.connectionDidChange(target)
+        try await until { model.records.contains { $0.id == file.id } }
+        model.selectedFile = file.id
+        try await until { model.selectedContent == "# 后台目录继续监视" }
+        model.toggle(try #require(model.source))
         try await until { model.source?.config.enabled == false && !model.working }
         try Data("# 暂停时修改".utf8).write(to: url, options: .atomic)
         try await Task.sleep(for: .seconds(2))
-        #expect(model.selectedContent == "# 自动监视后的正文")
+        #expect(model.selectedContent == "# 后台目录继续监视")
         try await snapshot(window, name: "files-paused")
         model.toggle(try #require(model.source))
         try await until { model.selectedContent == "# 暂停时修改" && !model.working }
         await model.stop()
         try Data("# 停机时修改".utf8).write(to: url, options: .atomic)
+        try await Task.sleep(for: .seconds(2))
+        #expect(try await client.content(for: file) == "# 暂停时修改")
+        #expect(!model.isScanning(source))
         try model.start()
         try await until { model.selectedContent == "# 停机时修改" }
         try FileManager.default.removeItem(at: url)
@@ -148,8 +176,6 @@ struct LocalFilesInterfaceTests {
         try await until { model.selectedContent != nil && !model.loadingContent }
         try await snapshot(window, name: "files-failure")
         let restoredSource = try #require(model.source)
-        let client = LocalFileClient(
-            target: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]))
         model.remove(restoredSource)
         try await until { model.sources.isEmpty && !model.working }
         #expect(try await client.records(source: restoredSource).count == 6)

@@ -6,6 +6,24 @@ import Testing
 @testable import Capture
 
 struct CaptureStoreTests {
+    @Test(arguments: [1, 3])
+    func incompatibleDevelopmentFormatsAreRejectedWithoutChangingTheFile(version: Int) throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var connection: OpaquePointer?
+        #expect(sqlite3_open(url.path, &connection) == SQLITE_OK)
+        let database = try #require(connection)
+        let status = sqlite3_exec(
+            database,
+            "CREATE TABLE records(id TEXT PRIMARY KEY, body BLOB); PRAGMA user_version=\(version);",
+            nil, nil, nil)
+        sqlite3_close(database)
+        #expect(status == SQLITE_OK)
+        let original = try Data(contentsOf: url)
+        #expect(throws: PeerError.self) { try CaptureStore(url: url) }
+        #expect(try Data(contentsOf: url) == original)
+    }
+
     @Test func deletedDraftIsAbsentAfterRestartAndLateAutosaveCannotRecreateIt() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString)

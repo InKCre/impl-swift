@@ -34,7 +34,7 @@ public final class LocalFilesModel: ObservableObject {
 
     private let context: PeerHostContext
     private var bindings: [DirectoryBinding] = []
-    private var monitors: [String: Monitor] = [:]
+    private var monitors: [String: DirectoryMonitor] = [:]
     private var prepared: Set<UUID> = []
     private var timer: Task<Void, Never>?
     private var recordsTask: Task<Void, Never>?
@@ -42,22 +42,6 @@ public final class LocalFilesModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var actionTask: Task<Void, Never>?
     private var directoryPanel: NSOpenPanel?
-
-    private final class Monitor {
-        let source: DirectorySource
-        let target: ConnectionTarget
-        let root: URL
-        let scoped: Bool
-        var watcher: DirectoryWatcher?
-        var task: Task<Void, Never>?
-        var dirty = false
-        init(source: DirectorySource, target: ConnectionTarget, root: URL, scoped: Bool) {
-            self.source = source
-            self.target = target
-            self.root = root
-            self.scoped = scoped
-        }
-    }
 
     public init(context: PeerHostContext) { self.context = context }
     private var bindingURL: URL {
@@ -107,7 +91,11 @@ public final class LocalFilesModel: ObservableObject {
         timer?.cancel()
         recordsTask?.cancel()
         contentTask?.cancel()
-        for monitor in monitors.values { monitor.task?.cancel() }
+        await withTaskGroup(of: Void.self) { group in
+            for id in Array(monitors.keys) {
+                group.addTask { await self.stopMonitor(id) }
+            }
+        }
         await actionTask?.value
         await refreshTask?.value
         await timer?.value
@@ -117,7 +105,6 @@ public final class LocalFilesModel: ObservableObject {
         contentTask?.cancel()
         await contentTask?.value
         loadingContent = false
-        for id in Array(monitors.keys) { await stopMonitor(id) }
     }
 
     public func connectionDidChange(_ connection: ConnectionTarget) async {
@@ -230,9 +217,9 @@ public final class LocalFilesModel: ObservableObject {
                         continue
                     }
                 }
-                if let monitor = monitors[binding.id], monitor.task == nil {
+                if let monitor = monitors[binding.id], !monitor.isScanning {
                     let jobs = try await client.pendingScans(source)
-                    if !jobs.isEmpty || monitor.dirty { schedule(binding.id) }
+                    if !jobs.isEmpty || monitor.needsScan { monitor.schedule() }
                 }
             }
             for source in found
@@ -263,7 +250,6 @@ public final class LocalFilesModel: ObservableObject {
                 == URL(fileURLWithPath: source.config.path).resolvingSymlinksInPath().path
         else { throw PeerError.needsAction("目录位置已改变，请重新选择目录。") }
         let scoped = root.startAccessingSecurityScopedResource()
-        let monitor = Monitor(source: source, target: target, root: root, scoped: scoped)
         do {
             if stale, let index = bindings.firstIndex(where: { $0.id == binding.id }) {
                 bindings[index].bookmark = try root.bookmarkData(
@@ -271,11 +257,21 @@ public final class LocalFilesModel: ObservableObject {
                     relativeTo: nil)
                 try saveBindings()
             }
-            monitor.watcher = try DirectoryWatcher(path: root.path) { [weak self] in
-                self?.schedule(binding.id)
-            }
-            monitors[binding.id] = monitor
-            schedule(binding.id)
+            let id = binding.id
+            let monitor = try DirectoryMonitor(
+                source: source, target: target, context: context, root: root, scoped: scoped,
+                onState: { [weak self] message, active in
+                    guard let self else { return }
+                    statuses[id] = message
+                    if active { scanning.insert(id) } else { scanning.remove(id) }
+                },
+                onSources: { [weak self] updated in
+                    guard let self, running, self.target?.id == target.id else { return }
+                    sources = updated
+                    loadRecords()
+                })
+            monitors[id] = monitor
+            monitor.schedule()
         } catch {
             if scoped { root.stopAccessingSecurityScopedResource() }
             throw error
@@ -283,93 +279,13 @@ public final class LocalFilesModel: ObservableObject {
     }
 
     private func stopMonitor(_ id: String) async {
-        guard let monitor = monitors.removeValue(forKey: id) else { return }
-        monitor.watcher?.stop()
-        monitor.task?.cancel()
-        await monitor.task?.value
-        if monitor.scoped { monitor.root.stopAccessingSecurityScopedResource() }
-        scanning.remove(id)
-    }
-
-    private func schedule(_ id: String) {
-        guard running, let monitor = monitors[id] else { return }
-        monitor.dirty = true
-        guard monitor.task == nil else { return }
-        monitor.task = Task { [weak self, weak monitor] in
-            guard let self, let monitor else { return }
-            defer {
-                monitor.task = nil
-                scanning.remove(id)
-            }
-            while monitor.dirty, running, !Task.isCancelled {
-                monitor.dirty = false
-                scanning.insert(id)
-                statuses[id] = "正在扫描…"
-                var job: SourceJob?
-                let client: LocalFileClient
-                do { client = try await self.client(monitor.target) } catch {
-                    statuses[id] = error.localizedDescription
-                    monitor.dirty = true
-                    break
-                }
-                do {
-                    let pending = try await client.pendingScans(monitor.source)
-                    for candidate in pending {
-                        if let claimed = try await client.claim(candidate, source: monitor.source) {
-                            job = claimed
-                            break
-                        }
-                    }
-                    let state = try await DirectoryScanner.scan(
-                        source: monitor.source, client: client, job: job
-                    ) { [weak self] progress in
-                        await self?.report(progress, id: id)
-                    }
-                    if let job {
-                        try await client.close(
-                            job, status: state.errors == 0 ? "finished" : "failed", state: state)
-                    }
-                    statuses[id] = state.errors == 0 ? "正在监视" : "\(state.errors) 个文件需要处理"
-                    let updated = try await client.sources()
-                    if target?.peerID == monitor.source.config.peer, running, !Task.isCancelled {
-                        sources = updated
-                        loadRecords()
-                    }
-                    if !(try await client.pendingScans(monitor.source)).isEmpty {
-                        monitor.dirty = true
-                    }
-                } catch {
-                    let message =
-                        PeerDatabase.isCancellation(error)
-                        ? "扫描已停止" : PeerDatabase.failure(error).localizedDescription
-                    statuses[id] = message
-                    if !PeerDatabase.isCancellation(error), running {
-                        do { try await client.reportIssue(message, source: monitor.source) } catch {
-                            statuses[id] = "\(message)；状态暂未写回信息库"
-                        }
-                    }
-                    if let job, !Task.isCancelled, running {
-                        let status =
-                            Date() >= job.deadline
-                            ? "timed_out"
-                            : PeerDatabase.isCancellation(error) ? "aborted" : "failed"
-                        do {
-                            try await client.close(
-                                job, status: status, state: DirectoryState(issue: message))
-                        } catch {
-                            statuses[id] = "\(message)；任务终态待信息库核对"
-                        }
-                    }
-                    // Reconnection reconciles current files, without an outbox.
-                    monitor.dirty = true
-                    break
-                }
-            }
+        guard let monitor = monitors[id] else { return }
+        await monitor.stop()
+        // A concurrent stop must await this monitor too, without removing its replacement.
+        if monitors[id] === monitor {
+            monitors.removeValue(forKey: id)
+            scanning.remove(id)
         }
-    }
-
-    private func report(_ progress: ScanProgress, id: String) {
-        statuses[id] = "\(progress.completed)/\(progress.total) · \(progress.filename)"
     }
 
     private func prepare(_ client: LocalFileClient) async throws {
@@ -519,7 +435,7 @@ public final class LocalFilesModel: ObservableObject {
     public func rescan(_ source: DirectorySource) {
         perform { target in
             _ = try await self.client(target).submitScan(source)
-            self.schedule(self.key(source.id, target))
+            self.monitors[self.key(source.id, target)]?.schedule()
         }
     }
 
