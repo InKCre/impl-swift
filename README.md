@@ -20,7 +20,7 @@ open dist/InKCre.app
 
 构建产物是 universal `.app` 和 `dist/InKCre-0.1.0-universal.dmg`。未指定开发签名身份时使用 ad-hoc 签名；两种开发包都不能当作已公证的发行版。将 `.app` 放在固定位置，并保持稳定的开发签名身份后再授权。
 
-首版尚未发布，应用版本当前为 `0.1.0`。`CFBundleShortVersionString` 保存应用版本，`CFBundleVersion` 单独记录构建序号；交付说明写作 `0.1.0（build 15）`，不能将构建序号称作 `v15`。首版发布前最多递增 patch 或 build，不提升 minor／major；一般开发构建只递增 build，正式版本准备遵循组织的 Release 流程。
+首版尚未发布，应用版本当前为 `0.1.0`，版本与 build 的构建输入统一在 `Application.json`。`CFBundleShortVersionString` 保存应用版本，`CFBundleVersion` 单独记录构建序号；交付说明按实际构建写作 `0.1.0（build 19）`，不能将构建序号称作 `v15`。首版发布前最多递增 patch 或 build，不提升 minor／major；一般开发构建只递增 build，正式版本准备遵循组织的 Release 流程。
 
 需要反复开发和实测系统采集时，使用本人明确指定的 Apple Development 身份：`DEVELOPMENT_SIGNING_IDENTITY='Apple Development: …' bash scripts/build-app.sh`。也可将该身份的名称或证书 SHA-1 单独保存在 ignored `.local-development-signing-identity`（一行文本，不执行其中内容）。脚本不会自动选择证书或回退到另一个身份；正式发布仍使用独立的 `SIGNING_IDENTITY` 输入。ad-hoc 身份随代码版本变化，系统可能不再认可先前的隐私授权；固定路径和 bundle ID 本身不足以解决此问题。[Apple 对代码身份与授权的说明](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements)。
 
@@ -37,6 +37,29 @@ open dist/InKCre.app
 移除材料、删除草稿和删除记录均先显示系统确认框；取消确认不会改变内容，确认后直接删除，无法撤销。快捷面板的“取消本次”在有内容时先确认，确认后删除本次草稿并关闭面板；空面板直接关闭。“收起”只隐藏面板并保留草稿。删除已收入记录只影响本机列表，共享内容仍属于 info-base。不提供回收站或“撤销移除”。
 
 手写想法使用单一主要输入区；采集原文与可选附注分别呈现，附注按需展开，已有附注默认可见，编辑区不嵌套在原文滚动区内。图片可用原生 Quick Look 查看原始尺寸，预览临时文件只对当前用户可读写，关闭预览或离开内容时移除。未收入记录可以展开查看完整原文、全部图片、来源和附注，无须导出 JSON 才能核对材料。上次收入状态与当前草稿保存状态分别显示，“查看记录”定位到对应条目，继续写下一条想法不会丢失入口。
+
+## 数据库与原生主流程验收
+
+默认 `bash scripts/check.sh` 检查格式和不依赖数据库的行为；数据库用例未配置时会明确跳过。两种入口都显式串行执行测试，因为原生界面用例共享 NSApplication、菜单和焦点状态。`SWIFT_JOBS` 只调节编译并发，默认 2。
+
+完整验收消费 impl-py 的权威初始化，不在本仓维护 schema。CI 使用 `scripts/database-source-revision` 固定该实现版本；本地可传入已完成 PDM 安装的 impl-py checkout，入口会显示实际 revision。准备 PostgreSQL 17 与 pgvector 后，从空库开始执行：
+
+```sh
+brew install postgresql@17 pgvector
+# impl-py 中先按其说明安装 Python 3.12 和锁定 PDM 依赖。
+python3 scripts/check-database.py --impl-py /path/to/impl-py \
+  --postgres-bin "$(brew --prefix postgresql@17)/bin"
+```
+
+此入口仅在临时目录创建独立 PostgreSQL cluster、随机回环端口和随机凭据，调用权威 `scripts/database.py init --profile development`／`ready`，开启 Capture 和 Local Files 的全部数据库及隐藏原生窗口旅程，结束后停止并删除该临时 cluster。不会使用现有 development／preview 库，也不启动系统 PostgreSQL 服务。缺工具、迁移失败或验收失败均返回非零。
+
+已有独占且完成权威迁移的一次性数据库时，可以消费权限为 0600 的 JSON descriptor：
+
+```sh
+python3 scripts/check-database.py --descriptor /private/path/swift-test.json
+```
+
+descriptor 必须声明 `disposable: true`，包含 `host`（回环）、`port`、`database`、`username: "inkcre_core"` 和 `password`；调用者负责该库的独占性与销毁。凭据通过子进程环境传入，不 source dotenv，也不放入命令参数。脚本不修改 schema；`INKCRE_LAYOUT_EVIDENCE_DIR` 可指定已有目录保存合成界面的实际渲染图。这些检查不代表系统授权提示、真实跨应用选区、多屏实体环境或公证已通过。
 
 ## 连接信息库
 

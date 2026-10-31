@@ -8,28 +8,8 @@ public protocol CaptureTransport: Sendable {
 }
 
 public struct CaptureClient: CaptureTransport {
-    public static let descriptor: NativeExtensionDescriptor = {
-        let bundle: Bundle
-        if Bundle.main.bundleURL.pathExtension == "app" {
-            guard
-                let url = Bundle.main.url(
-                    forResource: "InKCreCapture_Capture", withExtension: "bundle"),
-                let packaged = Bundle(url: url)
-            else {
-                preconditionFailure("Missing packaged Capture distribution")
-            }
-            bundle = packaged
-        } else {
-            bundle = .module
-        }
-        guard let url = bundle.url(forResource: "extension", withExtension: "json"),
-            let data = try? Data(contentsOf: url),
-            let descriptor = try? JSONDecoder().decode(NativeExtensionDescriptor.self, from: data)
-        else {
-            preconditionFailure("Invalid bundled Capture manifest")
-        }
-        return descriptor
-    }()
+    public static let descriptor = NativeExtensionDescriptor.bundled(
+        resourceBundle: "InKCreCapture_Capture", developmentBundle: .module)
     private let database: PeerDatabase
     public init(database: PeerDatabase = .shared) { self.database = database }
 

@@ -14,7 +14,14 @@ public actor PeerDatabase {
     }
     private var pools: [UUID: Pool] = [:]
 
-    public init() {}
+    private let applicationVersion: String
+    public init(
+        applicationVersion: String = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString")
+            as? String ?? "development"
+    ) {
+        self.applicationVersion = applicationVersion
+    }
 
     public func client(for target: ConnectionTarget, password: String) throws -> PostgresClient {
         try target.validate()
@@ -59,12 +66,13 @@ public actor PeerDatabase {
         let client = try client(for: target, password: password)
         if pools[target.id]?.registered == true { return }
         let name = Host.current().localizedName ?? "InKCre Mac"
+        let applicationVersion = self.applicationVersion
         try await withConnection(for: target, password: password) { connection in
             try await connection.withTransaction(logger: Self.logger) { connection in
                 try await connection.query(
                     """
                     INSERT INTO inkcre.peers (id,name,application_version,capabilities,config_schema,config,labels)
-                    VALUES (\(target.peerID),\(name),'0.1.0','[]','{}','{}',ARRAY['macOS'])
+                    VALUES (\(target.peerID),\(name),\(applicationVersion),'[]','{}','{}',ARRAY['macOS'])
                     ON CONFLICT (id) DO UPDATE SET application_version=EXCLUDED.application_version
                     """, logger: Self.logger)
                 try await connection.query(

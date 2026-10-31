@@ -217,10 +217,7 @@ public final class LocalFilesModel: ObservableObject {
                         continue
                     }
                 }
-                if let monitor = monitors[binding.id], !monitor.isScanning {
-                    let jobs = try await client.pendingScans(source)
-                    if !jobs.isEmpty || monitor.needsScan { monitor.schedule() }
-                }
+                monitors[binding.id]?.refresh()
             }
             for source in found
             where !bindings.contains(where: { $0.id == key(source.id, connection) }) {
@@ -241,41 +238,27 @@ public final class LocalFilesModel: ObservableObject {
         _ binding: DirectoryBinding, source: DirectorySource, target: ConnectionTarget
     ) throws {
         guard running, !Task.isCancelled else { throw CancellationError() }
-        var stale = false
-        let root = try URL(
-            resolvingBookmarkData: binding.bookmark, options: [.withSecurityScope, .withoutUI],
-            relativeTo: nil, bookmarkDataIsStale: &stale)
-        guard
-            root.resolvingSymlinksInPath().path
-                == URL(fileURLWithPath: source.config.path).resolvingSymlinksInPath().path
-        else { throw PeerError.needsAction("目录位置已改变，请重新选择目录。") }
-        let scoped = root.startAccessingSecurityScopedResource()
-        do {
-            if stale, let index = bindings.firstIndex(where: { $0.id == binding.id }) {
-                bindings[index].bookmark = try root.bookmarkData(
-                    options: [.withSecurityScope], includingResourceValuesForKeys: nil,
-                    relativeTo: nil)
-                try saveBindings()
-            }
-            let id = binding.id
-            let monitor = try DirectoryMonitor(
-                source: source, target: target, context: context, root: root, scoped: scoped,
-                onState: { [weak self] message, active in
-                    guard let self else { return }
-                    statuses[id] = message
-                    if active { scanning.insert(id) } else { scanning.remove(id) }
-                },
-                onSources: { [weak self] updated in
-                    guard let self, running, self.target?.id == target.id else { return }
-                    sources = updated
-                    loadRecords()
-                })
-            monitors[id] = monitor
-            monitor.schedule()
-        } catch {
-            if scoped { root.stopAccessingSecurityScopedResource() }
-            throw error
-        }
+        let id = binding.id
+        let monitor = try DirectoryMonitor(
+            source: source, target: target, context: context, bookmark: binding.bookmark,
+            onBookmarkRenewed: { bookmark in
+                if let index = bindings.firstIndex(where: { $0.id == id }) {
+                    bindings[index].bookmark = bookmark
+                    try saveBindings()
+                }
+            },
+            onState: { [weak self] message, active in
+                guard let self else { return }
+                statuses[id] = message
+                if active { scanning.insert(id) } else { scanning.remove(id) }
+            },
+            onSources: { [weak self] updated in
+                guard let self, running, self.target?.id == target.id else { return }
+                sources = updated
+                loadRecords()
+            })
+        monitors[id] = monitor
+        monitor.schedule()
     }
 
     private func stopMonitor(_ id: String) async {

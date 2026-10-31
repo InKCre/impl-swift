@@ -59,7 +59,7 @@ public actor CaptureStore {
             return sqlite3_column_int(statement, 0)
         }
         guard version == 0 || version == 2 else {
-            throw PeerError.storage("本地数据格式与当前开发版不兼容，原文件已保留。")
+            throw PeerError.storage("本地数据格式 v\(version) 与当前开发版 v2 不兼容，原文件已保留；不会猜测旧待办顺序或自动导入。")
         }
         try database.execute(
             """

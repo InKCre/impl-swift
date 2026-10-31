@@ -15,23 +15,51 @@ final class DirectoryMonitor {
     private var watcher: DirectoryWatcher?
     private var task: Task<Void, Never>?
     private var stopped = false
-    private(set) var needsScan = false
-    var isScanning: Bool { task != nil }
+    private var needsScan = false
+    typealias Scan =
+        @Sendable (
+            DirectorySource, LocalFileClient, SourceJob?,
+            @escaping @Sendable (ScanProgress) async -> Void
+        ) async throws -> DirectoryState
+    private let scan: Scan
 
     init(
         source: DirectorySource, target: ConnectionTarget, context: PeerHostContext,
-        root: URL, scoped: Bool,
+        bookmark: Data, onBookmarkRenewed: (Data) throws -> Void,
         onState: @escaping (String, Bool) -> Void,
-        onSources: @escaping ([DirectorySource]) -> Void
+        onSources: @escaping ([DirectorySource]) -> Void,
+        scan: @escaping Scan = { source, client, job, progress in
+            try await DirectoryScanner.scan(
+                source: source, client: client, job: job, progress: progress)
+        }
     ) throws {
         self.source = source
         self.target = target
         self.context = context
-        self.root = root
-        self.scoped = scoped
         self.onState = onState
         self.onSources = onSources
-        watcher = try DirectoryWatcher(path: root.path) { [weak self] in self?.schedule() }
+        self.scan = scan
+        var stale = false
+        root = try URL(
+            resolvingBookmarkData: bookmark, options: [.withSecurityScope, .withoutUI],
+            relativeTo: nil, bookmarkDataIsStale: &stale)
+        guard
+            root.resolvingSymlinksInPath().path
+                == URL(fileURLWithPath: source.config.path).resolvingSymlinksInPath().path
+        else { throw PeerError.needsAction("目录位置已改变，请重新选择目录。") }
+        scoped = root.startAccessingSecurityScopedResource()
+        do {
+            if stale {
+                try onBookmarkRenewed(
+                    root.bookmarkData(
+                        options: [.withSecurityScope], includingResourceValuesForKeys: nil,
+                        relativeTo: nil))
+            }
+            watcher = try DirectoryWatcher(path: root.path) { [weak self] in self?.schedule() }
+        } catch {
+            if scoped { root.stopAccessingSecurityScopedResource() }
+            throw error
+        }
     }
 
     func stop() async {
@@ -50,17 +78,20 @@ final class DirectoryMonitor {
     func schedule() {
         guard !stopped, !Task.isCancelled else { return }
         needsScan = true
-        guard task == nil else { return }
+        refresh()
+    }
+
+    /// Poll shared work and retry failed reconciliation without exposing scheduling state.
+    func refresh() {
+        guard !stopped, !Task.isCancelled, task == nil else { return }
         task = Task {
-            var status = "正在扫描…"
+            var status = ""
             defer {
                 task = nil
-                if !stopped { onState(status, false) }
+                if !stopped, !status.isEmpty { onState(status, false) }
             }
             guard !stopped, !Task.isCancelled else { return }
-            onState(status, true)
-            while needsScan, !stopped, !Task.isCancelled {
-                needsScan = false
+            while !stopped, !Task.isCancelled {
                 var job: SourceJob?
                 let client: LocalFileClient
                 do {
@@ -76,17 +107,20 @@ final class DirectoryMonitor {
                 }
                 do {
                     let pending = try await client.pendingScans(source)
+                    try Task.checkCancellation()
+                    guard needsScan || !pending.isEmpty else { break }
+                    needsScan = false
+                    onState("正在扫描…", true)
                     for candidate in pending {
                         if let claimed = try await client.claim(candidate, source: source) {
                             job = claimed
                             break
                         }
                     }
-                    let state = try await DirectoryScanner.scan(
-                        source: source, client: client, job: job
-                    ) { [weak self] progress in
+                    let state = try await scan(source, client, job) { [weak self] progress in
                         await self?.report(progress)
                     }
+                    try Task.checkCancellation()
                     if let job {
                         try await client.close(
                             job, status: state.errors == 0 ? "finished" : "failed", state: state)
@@ -94,7 +128,6 @@ final class DirectoryMonitor {
                     status = state.errors == 0 ? "正在监视" : "\(state.errors) 个文件需要处理"
                     let updated = try await client.sources()
                     if !stopped, !Task.isCancelled { onSources(updated) }
-                    if !(try await client.pendingScans(source)).isEmpty { needsScan = true }
                 } catch {
                     status =
                         PeerDatabase.isCancellation(error)

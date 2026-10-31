@@ -11,4 +11,5 @@ git ls-files --cached --others --exclude-standard -z -- \
     'Packages/**/*.swift' 'extensions/**/*.swift' \
     ':!extensions/capture/Sources/CaptureMac/Vendor/**' \
     | xargs -0 swift format lint --strict
-swift test --disable-automatic-resolution
+# AppKit suites share the process-wide application/menu/focus state.
+swift test --disable-automatic-resolution --no-parallel --jobs "${SWIFT_JOBS:-2}"

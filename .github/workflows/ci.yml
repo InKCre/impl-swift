@@ -21,3 +21,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 检查格式、lint 与 SwiftPM 测试
         run: bash scripts/check.sh
+
+      - name: 读取权威数据库实现基线
+        id: database-source
+        run: echo "revision=$(cat scripts/database-source-revision)" >> "$GITHUB_OUTPUT"
+      - name: 获取权威迁移实现
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: InKCre/impl-py
+          ref: ${{ steps.database-source.outputs.revision }}
+          path: .verification/impl-py
+      - name: 准备 Python 与 PDM
+        uses: pdm-project/setup-pdm@973541a5febeafcfdadf8a51211435be6ecfd90f # v4.5
+        with:
+          python-version: '3.12'
+          version: 2.28.0
+          update-python: false
+      - name: 安装权威迁移依赖
+        working-directory: .verification/impl-py
+        run: |
+          pdm use -f 3.12
+          pdm install --prod --frozen-lockfile
+      - name: 准备原生 PostgreSQL 工具
+        run: |
+          # Hosted runners are disposable; keep any preinstalled libpq links from hiding server assets.
+          brew unlink libpq || true
+          brew install postgresql@17 pgvector
+          brew link --overwrite --force postgresql@17
+      - name: 一次性数据库与原生主流程验收
+        run: >-
+          python3 scripts/check-database.py --impl-py .verification/impl-py
+          --postgres-bin "$(brew --prefix postgresql@17)/bin"

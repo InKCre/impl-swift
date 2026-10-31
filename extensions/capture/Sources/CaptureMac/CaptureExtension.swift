@@ -52,12 +52,22 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
     private var statusItem: NSStatusItem?
     private var shortcutObservation: AnyCancellable?
     private var panel: CapturePanel?
-    public weak var mainWindow: NSWindow?
+    private weak var mainWindow: NSWindow?
     public var presentMain: (() -> Void)?
     public var navigate: ((CapturePage) -> Void)?
-    public var showingCapturePage = true
+    private var mainPage: CapturePage?
 
-    public func selectPage(_ page: CapturePage) { model?.pane = page }
+    /// The Host supplies its current presentation in one operation, before or after starting.
+    public func updateHostPresentation(page: CapturePage?, window: NSWindow?) {
+        mainWindow = window
+        mainPage = page
+        if let page { model?.pane = page }
+    }
+
+    private func isCaptureWindow(_ window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        return window === panel || window === mainWindow
+    }
     public func pageView() -> AnyView {
         if let model { return AnyView(CapturePageView(model: model)) }
         return AnyView(ContentUnavailableView("采集扩展已停用", systemImage: "viewfinder"))
@@ -98,6 +108,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
                 directory: context.directory.appendingPathComponent("extensions/inkcre-capture"),
                 identity: context.identity, connections: context.connections)
             self.model = model
+            if let mainPage { model.pane = mainPage }
             let panel = CapturePanel(
                 contentRect: NSRect(x: 0, y: 0, width: 570, height: 640),
                 styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
@@ -121,8 +132,8 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
                 self?.editConnection?(target, completion)
             }
             model.takeScreenshot = { [weak self] in self?.screenshot() }
-            model.shortcuts.isCaptureWindow = { [weak panel, weak mainWindow] window in
-                window === panel || window === mainWindow
+            model.shortcuts.isCaptureWindow = { [weak self] window in
+                self?.isCaptureWindow(window) == true
             }
             model.shortcuts.canPerform = { [weak self] action, window in
                 self?.canPerform(action, in: window) == true
@@ -201,14 +212,14 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         }
     }
 
-    private func canPerform(_ action: ShortcutAction, in window: NSWindow?) -> Bool {
+    func canPerform(_ action: ShortcutAction, in window: NSWindow?) -> Bool {
         guard canChangeCaptureContext, let model, model.shortcuts.recording == nil else {
             return false
         }
         let quick = window === panel && model.editorOwner == .quick
         let editor =
             quick
-            || (showingCapturePage && window === mainWindow && model.pane == .capture
+            || (mainPage != nil && window === mainWindow && model.pane == .capture
                 && model.editorOwner == .main)
         return model.canPerform(action, isEditor: editor, isQuickPanel: quick)
     }
@@ -427,7 +438,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         panel?.orderOut(nil)
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
         statusItem = nil
-        if let commandItem { NSApp.mainMenu?.removeItem(commandItem) }
+        if let commandItem { commandItem.menu?.removeItem(commandItem) }
         commandItem = nil
         shortcutObservation = nil
         try await model.flush()

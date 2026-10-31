@@ -36,11 +36,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     }
     @Published var columnVisibility = NavigationSplitViewVisibility.all
     @Published var page = Page.capture {
-        didSet {
-            capture.showingCapturePage = page == .capture || page == .records
-            if page == .capture { capture.selectPage(.capture) }
-            if page == .records { capture.selectPage(.queue) }
-        }
+        didSet { updateCapturePresentation() }
     }
     private(set) var mainWindow: PeerMainWindow?
     override convenience init() {
@@ -90,7 +86,6 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         makeMainWindow()
         do {
             try runtime.startIfEnabled()
-            capture.selectPage(page == .records ? .queue : .capture)
         } catch { show(error) }
         do { try filesRuntime.startIfEnabled() } catch { show(error) }
         showMain()
@@ -115,7 +110,17 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     func makeMainWindow() {
         guard mainWindow == nil else { return }
         mainWindow = PeerMainWindow(host: self)
-        capture.mainWindow = mainWindow
+        updateCapturePresentation()
+    }
+
+    private func updateCapturePresentation() {
+        let capturePage: CapturePage? =
+            switch page {
+            case .capture: .capture
+            case .records: .queue
+            case .files, .peer: nil
+            }
+        capture.updateHostPresentation(page: capturePage, window: mainWindow)
     }
 
     @objc func showMain() {
@@ -233,7 +238,6 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         Task {
             objectWillChange.send()
             do { try await runtime.setEnabled(enable) } catch { show(error) }
-            capture.selectPage(page == .records ? .queue : .capture)
             manager?.refreshCaptureSettings(host: self)
             updateStatus()
         }

@@ -7,3 +7,6 @@ xcuserdata/
 .local-development-signing-identity
 **/Package.resolved
 !/Package.resolved
+
+# Disposable authority checkout used by database acceptance.
+.verification/

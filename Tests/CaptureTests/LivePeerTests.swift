@@ -13,7 +13,7 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
         database: try #require(env["INKCRE_CAPTURE_TEST_DATABASE"]), username: "inkcre_core",
         tls: .disable)
     let password = try #require(env["INKCRE_CAPTURE_TEST_PASSWORD"])
-    let database = PeerDatabase()
+    let database = PeerDatabase(applicationVersion: "swift-acceptance")
     let client = CaptureClient(database: database)
     let pg = try await database.client(for: target, password: password)
     struct Fixture: Decodable { let payload: CapturePayload }
@@ -33,6 +33,9 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     let results = try await [a, b, c]
     let result = try #require(results.first)
     #expect(results.allSatisfy { $0 == result })
+    let versions = try await pg.query(
+        "SELECT application_version FROM inkcre.peers WHERE id=\(target.peerID)")
+    #expect(try await versions.decode(String.self).first { _ in true } == "swift-acceptance")
     let rows = try await pg.query(
         """
         WITH RECURSIVE captured(id) AS (SELECT \(result.rootBlockID)::integer UNION

@@ -8,7 +8,8 @@ development_identity="${DEVELOPMENT_SIGNING_IDENTITY:-}"
 if [[ -z "$development_identity" && -z "${SIGNING_IDENTITY:-}" && -f .local-development-signing-identity ]]; then
   development_identity="$(< .local-development-signing-identity)"
 fi
-version="0.1.0"
+version="$(python3 -c 'import json; print(json.load(open("Application.json"))["version"])')"
+build="$(python3 -c 'import json; print(json.load(open("Application.json"))["build"])')"
 case "$bundle_id" in *[!a-zA-Z0-9.-]*|"") echo "Invalid BUNDLE_ID" >&2; exit 1;; esac
 if [[ -n "${SIGNING_IDENTITY:-}" && "$bundle_id" == dev.* ]]; then
   echo "Signed release builds require an explicit stable BUNDLE_ID outside dev.*." >&2
@@ -19,8 +20,8 @@ if [[ -n "${SIGNING_IDENTITY:-}" && -n "$development_identity" ]]; then
   exit 1
 fi
 
-swift build -c "$configuration" --arch arm64 --arch x86_64
-bin_path="$(swift build -c "$configuration" --arch arm64 --arch x86_64 --show-bin-path)"
+swift build -c "$configuration" --arch arm64 --arch x86_64 --jobs "${SWIFT_JOBS:-2}"
+bin_path="$(swift build -c "$configuration" --arch arm64 --arch x86_64 --jobs "${SWIFT_JOBS:-2}" --show-bin-path)"
 app="dist/InKCre.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
@@ -48,7 +49,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleIconFile</key><string>AppIcon.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
-<key>CFBundleVersion</key><string>19</string>
+<key>CFBundleVersion</key><string>$build</string>
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
