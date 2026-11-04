@@ -2,7 +2,7 @@ import Foundation
 import PeerCore
 import PostgresNIO
 
-public struct LocalFileClient: Sendable {
+public struct LocalFilesRepository: Sendable {
     public let target: ConnectionTarget
     let password: String
     let database: PeerDatabase

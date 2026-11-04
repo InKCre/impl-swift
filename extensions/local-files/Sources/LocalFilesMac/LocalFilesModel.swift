@@ -202,10 +202,10 @@ public final class LocalFilesModel: ObservableObject {
         guard running, !Task.isCancelled else { return }
         defer { if target?.id == connection.id { loading = false } }
         do {
-            let client = try await client(connection)
-            try await prepare(client)
-            try await client.checkParticipation()
-            let found = try await client.sources()
+            let repository = try await repository(connection)
+            try await prepare(repository)
+            try await repository.checkParticipation()
+            let found = try await repository.sources()
             guard running, !Task.isCancelled else { return }
             if target?.id == connection.id {
                 let old = selectedSource
@@ -231,7 +231,7 @@ public final class LocalFilesModel: ObservableObject {
                     }
                 }
                 if let monitor = monitors[binding.id], monitor.task == nil {
-                    let jobs = try await client.pendingScans(source)
+                    let jobs = try await repository.pendingScans(source)
                     if !jobs.isEmpty || monitor.dirty { schedule(binding.id) }
                 }
             }
@@ -306,36 +306,38 @@ public final class LocalFilesModel: ObservableObject {
                 scanning.insert(id)
                 statuses[id] = "正在扫描…"
                 var job: SourceJob?
-                let client: LocalFileClient
-                do { client = try await self.client(monitor.target) } catch {
+                let repository: LocalFilesRepository
+                do { repository = try await self.repository(monitor.target) } catch {
                     statuses[id] = error.localizedDescription
                     monitor.dirty = true
                     break
                 }
                 do {
-                    let pending = try await client.pendingScans(monitor.source)
+                    let pending = try await repository.pendingScans(monitor.source)
                     for candidate in pending {
-                        if let claimed = try await client.claim(candidate, source: monitor.source) {
+                        if let claimed = try await repository.claim(
+                            candidate, source: monitor.source)
+                        {
                             job = claimed
                             break
                         }
                     }
                     let state = try await DirectoryScanner.scan(
-                        source: monitor.source, client: client, job: job
+                        source: monitor.source, repository: repository, job: job
                     ) { [weak self] progress in
                         await self?.report(progress, id: id)
                     }
                     if let job {
-                        try await client.close(
+                        try await repository.close(
                             job, status: state.errors == 0 ? "finished" : "failed", state: state)
                     }
                     statuses[id] = state.errors == 0 ? "正在监视" : "\(state.errors) 个文件需要处理"
-                    let updated = try await client.sources()
+                    let updated = try await repository.sources()
                     if target?.peerID == monitor.source.config.peer, running, !Task.isCancelled {
                         sources = updated
                         loadRecords()
                     }
-                    if !(try await client.pendingScans(monitor.source)).isEmpty {
+                    if !(try await repository.pendingScans(monitor.source)).isEmpty {
                         monitor.dirty = true
                     }
                 } catch {
@@ -344,7 +346,9 @@ public final class LocalFilesModel: ObservableObject {
                         ? "扫描已停止" : PeerDatabase.failure(error).localizedDescription
                     statuses[id] = message
                     if !PeerDatabase.isCancellation(error), running {
-                        do { try await client.reportIssue(message, source: monitor.source) } catch {
+                        do {
+                            try await repository.reportIssue(message, source: monitor.source)
+                        } catch {
                             statuses[id] = "\(message)；状态暂未写回信息库"
                         }
                     }
@@ -354,7 +358,7 @@ public final class LocalFilesModel: ObservableObject {
                             ? "timed_out"
                             : PeerDatabase.isCancellation(error) ? "aborted" : "failed"
                         do {
-                            try await client.close(
+                            try await repository.close(
                                 job, status: status, state: DirectoryState(issue: message))
                         } catch {
                             statuses[id] = "\(message)；任务终态待信息库核对"
@@ -372,15 +376,15 @@ public final class LocalFilesModel: ObservableObject {
         statuses[id] = "\(progress.completed)/\(progress.total) · \(progress.filename)"
     }
 
-    private func prepare(_ client: LocalFileClient) async throws {
-        guard !prepared.contains(client.target.id) else { return }
-        try await client.prepare()
-        prepared.insert(client.target.id)
+    private func prepare(_ repository: LocalFilesRepository) async throws {
+        guard !prepared.contains(repository.target.id) else { return }
+        try await repository.prepare()
+        prepared.insert(repository.target.id)
     }
 
-    private func client(_ target: ConnectionTarget) async throws -> LocalFileClient {
+    private func repository(_ target: ConnectionTarget) async throws -> LocalFilesRepository {
         let connection = try await context.connections.resolve(target)
-        return LocalFileClient(
+        return LocalFilesRepository(
             target: connection, password: try context.credentials.read(for: connection.id),
             database: context.database)
     }
@@ -402,7 +406,7 @@ public final class LocalFilesModel: ObservableObject {
         }
         recordsTask = Task {
             do {
-                let result = try await client(target).records(source: source)
+                let result = try await repository(target).records(source: source)
                 guard !Task.isCancelled, selectedSource == source.id, self.target?.id == target.id
                 else {
                     return
@@ -436,7 +440,7 @@ public final class LocalFilesModel: ObservableObject {
         contentTask = Task {
             defer { if !Task.isCancelled { loadingContent = false } }
             do {
-                let text = try await client(target).content(for: file)
+                let text = try await repository(target).content(for: file)
                 guard !Task.isCancelled else { return }
                 selectedContent = text
             } catch {
@@ -491,14 +495,14 @@ public final class LocalFilesModel: ObservableObject {
             }
             let bookmark = try url.bookmarkData(
                 options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
-            let client = try await client(target)
-            try await prepare(client)
+            let repository = try await repository(target)
+            try await prepare(repository)
             guard running, !Task.isCancelled else { throw CancellationError() }
             let directory: DirectorySource
             if let source {
                 directory = source
             } else {
-                directory = try await client.createDirectory(path: url.path)
+                directory = try await repository.createDirectory(path: url.path)
             }
             let binding = DirectoryBinding(source: directory.id, target: target, bookmark: bookmark)
             bindings.removeAll { $0.id == binding.id }
@@ -513,13 +517,13 @@ public final class LocalFilesModel: ObservableObject {
         perform { target in
             let id = self.key(source.id, target)
             await self.stopMonitor(id)
-            try await self.client(target).setEnabled(!source.config.enabled, source: source)
+            try await self.repository(target).setEnabled(!source.config.enabled, source: source)
         }
     }
 
     public func rescan(_ source: DirectorySource) {
         perform { target in
-            _ = try await self.client(target).submitScan(source)
+            _ = try await self.repository(target).submitScan(source)
             self.schedule(self.key(source.id, target))
         }
     }
@@ -529,7 +533,7 @@ public final class LocalFilesModel: ObservableObject {
         perform { target in
             let id = self.key(source.id, target)
             await self.stopMonitor(id)
-            try await self.client(target).remove(source)
+            try await self.repository(target).remove(source)
             self.bindings.removeAll { $0.id == id }
             try self.saveBindings()
         }

@@ -148,12 +148,12 @@ struct LocalFilesInterfaceTests {
         try await until { model.selectedContent != nil && !model.loadingContent }
         try await snapshot(window, name: "files-failure")
         let restoredSource = try #require(model.source)
-        let client = LocalFileClient(
+        let repository = LocalFilesRepository(
             target: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]),
             database: context.database)
         model.remove(restoredSource)
         try await until { model.sources.isEmpty && !model.working }
-        #expect(try await client.records(source: restoredSource).count == 6)
+        #expect(try await repository.records(source: restoredSource).count == 6)
         #expect(!window.isVisible)
         await model.stop()
     }

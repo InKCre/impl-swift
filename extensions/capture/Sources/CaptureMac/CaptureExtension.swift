@@ -19,7 +19,7 @@ final class CapturePanel: NSPanel {
 public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate,
     NSUserInterfaceValidations
 {
-    public let descriptor = CaptureClient.descriptor
+    public let descriptor = CaptureWriter.descriptor
     private let context: PeerHostContext
     public init(context: PeerHostContext) {
         self.context = context
@@ -97,7 +97,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
             let model = try CaptureModel(
                 directory: context.directory.appendingPathComponent("extensions/inkcre-capture"),
                 identity: context.identity, connections: context.connections,
-                client: CaptureClient(database: context.database))
+                writer: CaptureWriter(database: context.database))
             self.model = model
             let panel = CapturePanel(
                 contentRect: NSRect(x: 0, y: 0, width: 570, height: 640),

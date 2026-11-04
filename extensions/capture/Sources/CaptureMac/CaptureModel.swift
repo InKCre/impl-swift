@@ -74,7 +74,7 @@ final class CaptureModel: ObservableObject {
 
     init(
         directory: URL, identity: String, connections: ConnectionSettings? = nil,
-        client: any CaptureTransport
+        writer: any CaptureWriting
     ) throws {
         self.connections =
             connections
@@ -83,7 +83,7 @@ final class CaptureModel: ObservableObject {
         store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
         credentials = CredentialStore(service: "\(identity).connections")
         queue = CaptureQueue(
-            store: store, connections: self.connections, credentials: credentials, client: client)
+            store: store, connections: self.connections, credentials: credentials, writer: writer)
     }
 
     func canPerform(_ action: ShortcutAction, isEditor: Bool, isQuickPanel: Bool) -> Bool {

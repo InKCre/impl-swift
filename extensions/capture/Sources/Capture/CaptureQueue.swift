@@ -5,19 +5,19 @@ public actor CaptureQueue {
     private let store: CaptureStore
     private let connections: ConnectionSettings
     private let credentials: CredentialStore
-    private let client: any CaptureTransport
+    private let writer: any CaptureWriting
     private var running = false
     public private(set) var isStopped = false
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(
         store: CaptureStore, connections: ConnectionSettings, credentials: CredentialStore,
-        client: any CaptureTransport
+        writer: any CaptureWriting
     ) {
         self.connections = connections
         self.store = store
         self.credentials = credentials
-        self.client = client
+        self.writer = writer
     }
 
     public func resume() { isStopped = false }
@@ -61,7 +61,7 @@ public actor CaptureQueue {
                 var outgoing = item
                 outgoing.target = connection
                 if item.attempts > 0,
-                    let result = try await client.recover(outgoing, secret: secret)
+                    let result = try await writer.recover(outgoing, secret: secret)
                 {
                     try await store.confirm(item.id, result: result)
                     changed = true
@@ -72,7 +72,7 @@ public actor CaptureQueue {
                 dispatched.target = connection
                 changed = true
                 guard !isStopped, !Task.isCancelled else { return changed }
-                let result = try await client.submit(dispatched, secret: secret)
+                let result = try await writer.submit(dispatched, secret: secret)
                 try await store.confirm(item.id, result: result)
             } catch let error as PeerError {
                 let state: CaptureRecord.State

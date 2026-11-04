@@ -15,7 +15,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         var mainOpened = false
         model.editConnection = { _, _ in mainOpened = true }
@@ -33,7 +33,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let old = CaptureRecord(payload: CapturePayload(materials: [Material(text: "旧的已收入记录")]))
         try await model.store.saveDraft(old)
@@ -62,7 +62,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         model.thought = "主窗口中未提交的草稿"
         let previousID = model.draft.id
@@ -97,7 +97,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         await model.receive(
             CapturePayload(materials: [Material(text: "连接后继续收入的原文")], annotation: "原附注"))
@@ -143,8 +143,8 @@ struct CaptureInteractionTests {
                 ] as CFDictionary)
             try? FileManager.default.removeItem(at: directory)
         }
-        let transport = JourneyTransport()
-        let model = try CaptureModel(directory: directory, identity: identity, client: transport)
+        let writer = JourneyWriter()
+        let model = try CaptureModel(directory: directory, identity: identity, writer: writer)
         defer { model.cancelWork() }
         let originalTarget = ConnectionTarget(
             host: "original.test", database: "original", username: "test")
@@ -161,14 +161,14 @@ struct CaptureInteractionTests {
         _ = try await model.connections.select(active.id)
         // Merely opening and cancelling the editor must leave cancelled work dormant.
         await model.sendPending(force: true)
-        #expect(await transport.calls.isEmpty)
+        #expect(await writer.calls.isEmpty)
         try await model.updatePassword("new-fixture-password", for: cancelled)
         for _ in 0..<100 where model.records.first?.state != .confirmed {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(model.connection == active)
         #expect(try await model.connections.load() == active)
-        let calls = await transport.calls
+        let calls = await writer.calls
         #expect(calls.map(\.kind) == ["submit"])
         for call in calls {
             #expect(
@@ -194,7 +194,7 @@ struct CaptureInteractionTests {
             try? FileManager.default.removeItem(at: directory)
         }
         let model = try CaptureModel(
-            directory: directory, identity: identity, client: JourneyTransport())
+            directory: directory, identity: identity, writer: JourneyWriter())
         defer { model.cancelWork() }
         let target = ConnectionTarget(host: "fixture.test", database: "inkcre", username: "test")
         model.connection = target
@@ -226,7 +226,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.web.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let original = ConnectionTarget(
             host: "original.test", database: "original", username: "test")
@@ -263,7 +263,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.result.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let target = ConnectionTarget(
             host: "fixture.test", database: "inkcre", username: "inkcre_core")
@@ -292,7 +292,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.commands.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         #expect(!model.canPerform(.submit, isEditor: true, isQuickPanel: false))
         model.thought = "待收入的内容"
@@ -316,7 +316,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let material = Material(text: "误采的材料")
         let kept = Material(text: "保留的材料")
@@ -341,7 +341,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         model.thought = "尚未等到自动保存的中文 👩🏽‍💻"
         model.annotation = "最后一次附注"
@@ -370,7 +370,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         var closed = false
         model.dismissQuickCapture = { closed = true }
@@ -395,7 +395,7 @@ struct CaptureInteractionTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let other = CaptureRecord(payload: CapturePayload(materials: [Material(text: "另一份草稿")]))
         try await model.store.saveDraft(other)
@@ -413,7 +413,7 @@ struct CaptureInteractionTests {
     }
 }
 
-private actor JourneyTransport: CaptureTransport {
+private actor JourneyWriter: CaptureWriting {
     struct Call: Sendable {
         let kind: String
         let record: CaptureRecord

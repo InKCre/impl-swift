@@ -9,7 +9,7 @@ public struct ScanProgress: Sendable {
 
 public enum DirectoryScanner {
     public static func scan(
-        source: DirectorySource, client: LocalFileClient, job: SourceJob? = nil,
+        source: DirectorySource, repository: LocalFilesRepository, job: SourceJob? = nil,
         progress: @escaping @Sendable (ScanProgress) async -> Void = { _ in }
     ) async throws -> DirectoryState {
         let root = URL(fileURLWithPath: source.config.path, isDirectory: true)
@@ -21,7 +21,7 @@ public enum DirectoryScanner {
         } catch is CancellationError { throw CancellationError() } catch {
             throw PeerError.needsAction("无法完整读取目录：\(error.localizedDescription)")
         }
-        let records = try await client.records(source: source)
+        let records = try await repository.records(source: source)
         let paths = Set(files.map(\.path))
         let byPath = Dictionary(grouping: records, by: \.path)
         guard byPath.values.allSatisfy({ $0.count == 1 }) else {
@@ -35,7 +35,7 @@ public enum DirectoryScanner {
             guard let job else { return }
             if Date() >= job.deadline { throw PeerError.needsAction("扫描已超时。") }
             if force || ContinuousClock.now >= nextRemoteCheck {
-                try await client.check(job)
+                try await repository.check(job)
                 nextRemoteCheck = .now.advanced(by: .seconds(5))
             }
         }
@@ -55,7 +55,7 @@ public enum DirectoryScanner {
             }
             if let record { used.insert(record.id) }
             try await check()
-            try await client.save(observation, replacing: record, source: source)
+            try await repository.save(observation, replacing: record, source: source)
             if observation.metadata.issue != nil { errors += 1 }
             await progress(
                 ScanProgress(
@@ -66,7 +66,7 @@ public enum DirectoryScanner {
             throw PeerError.needsAction("目录在扫描中变更，等待重新核对。")
         }
         let state = DirectoryState(scanned_at: Date(), errors: errors)
-        try await client.finishScan(
+        try await repository.finishScan(
             source: source, missing: records.filter { !used.contains($0.id) }, state: state)
         return state
     }

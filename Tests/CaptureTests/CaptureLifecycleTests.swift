@@ -4,7 +4,7 @@ import PeerCore
 import Security
 import Testing
 
-private actor PausedRecovery: CaptureTransport {
+private actor PausedRecovery: CaptureWriting {
     private let pausedTarget: UUID?
     init(pausedTarget: UUID? = nil) { self.pausedTarget = pausedTarget }
     private var entered = false
@@ -57,18 +57,18 @@ private actor PausedRecovery: CaptureTransport {
             target: target)
         _ = try await store.markDispatch(frozen.id)
     }
-    let transport = PausedRecovery()
+    let writer = PausedRecovery()
     let queue = CaptureQueue(
-        store: store, connections: connections, credentials: credentials, client: transport)
+        store: store, connections: connections, credentials: credentials, writer: writer)
     let processing = Task { try await queue.process(force: true) }
-    await transport.waitForRecovery()
+    await writer.waitForRecovery()
     let stopped = Task { await queue.stop() }
     while !(await queue.isStopped) { await Task.yield() }
-    await transport.finishRecovery()
+    await writer.finishRecovery()
     _ = try await processing.value
     await stopped.value
     try await queue.process(force: true)
-    #expect(await transport.dispatches == 0)
+    #expect(await writer.dispatches == 0)
     #expect(try await store.records().allSatisfy { $0.state == .unknown && $0.attempts == 1 })
 }
 
@@ -96,11 +96,11 @@ private actor PausedRecovery: CaptureTransport {
         _ = try await store.markDispatch(frozen.id)
         ids.append(frozen.id)
     }
-    let transport = PausedRecovery(pausedTarget: first.id)
+    let writer = PausedRecovery(pausedTarget: first.id)
     let queue = CaptureQueue(
-        store: store, connections: connections, credentials: credentials, client: transport)
+        store: store, connections: connections, credentials: credentials, writer: writer)
     let processing = Task { try await queue.process(force: true) }
-    await transport.waitForRecovery()
+    await writer.waitForRecovery()
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while try await store.record(ids[1])?.result == nil, ContinuousClock.now < deadline {
         await Task.yield()
@@ -109,7 +109,7 @@ private actor PausedRecovery: CaptureTransport {
     #expect(try await store.record(ids[0])?.payload != nil)
     let stopped = Task { await queue.stop() }
     while !(await queue.isStopped) { await Task.yield() }
-    await transport.finishRecovery()
+    await writer.finishRecovery()
     _ = try await processing.value
     await stopped.value
     #expect(try await store.record(ids[0])?.state == .unknown)
