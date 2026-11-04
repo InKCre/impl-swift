@@ -6,7 +6,7 @@ public struct LocalFileClient: Sendable {
     public let target: ConnectionTarget
     let password: String
     let database: PeerDatabase
-    public init(target: ConnectionTarget, password: String, database: PeerDatabase = .shared) {
+    public init(target: ConnectionTarget, password: String, database: PeerDatabase) {
         self.target = target
         self.password = password
         self.database = database

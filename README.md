@@ -93,3 +93,9 @@ Swift 测试覆盖冻结包重开、目标绑定、原子确认、原生构图�
 原创 Swift 代码使用 MIT，Cida 选区读取与采集协调改编保留 Apache-2.0，BetterShot 选区与冻结图组件保留 BSD-3-Clause。见 [开源许可与致谢](THIRD_PARTY_NOTICES.md)。构建脚本从本次解析的依赖收集完整许可，随开发包交付；菜单“开源许可与致谢…”可打开通知。
 
 数据库操作将租用、结果读取和事务限制在同一个可取消作用域，单次最多等待 30 秒；取消或超时关闭当前连接。在途 Capture 仍通过原提交恢复确认。各信息库独立续租、刷新目录和处理采集待办，同一信息库内的采集待办按原顺序处理。停用本地扫描后不再另起网络任务写回 Job 终态，未确认终态由共享 Job 的既有截止时间收束。
+
+## 独立 Core 消费
+
+库与应用的消费边界见 [PeerCore](Packages/PeerCore/README.md)。`PeerCore` 可独立链接，不需要启动 Mac App；`PeerMacUI` 承载宿主界面与连接表单。App 创建并拥有数据库实例，Capture 与 Local Files 显式借用；扩展业务生命周期不再要求窗口方法。
+
+`bash scripts/check-core.sh` 检查独立 SwiftPM 消费者的构建和无连接生命周期。真实数据库、系统权限与完整 UI 旅程属于另外的验收范围。

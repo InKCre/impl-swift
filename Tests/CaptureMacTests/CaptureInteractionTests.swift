@@ -14,7 +14,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         var mainOpened = false
         model.editConnection = { _, _ in mainOpened = true }
@@ -31,7 +32,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         let old = CaptureRecord(payload: CapturePayload(materials: [Material(text: "旧的已收入记录")]))
         try await model.store.saveDraft(old)
@@ -59,7 +61,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         model.thought = "主窗口中未提交的草稿"
         let previousID = model.draft.id
@@ -93,7 +96,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         await model.receive(
             CapturePayload(materials: [Material(text: "连接后继续收入的原文")], annotation: "原附注"))
@@ -221,7 +225,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.web.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.web.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         let original = ConnectionTarget(
             host: "original.test", database: "original", username: "test")
@@ -257,7 +262,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.result.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.result.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         let target = ConnectionTarget(
             host: "fixture.test", database: "inkcre", username: "inkcre_core")
@@ -285,7 +291,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.commands.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.commands.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         #expect(!model.canPerform(.submit, isEditor: true, isQuickPanel: false))
         model.thought = "待收入的内容"
@@ -308,7 +315,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         let material = Material(text: "误采的材料")
         let kept = Material(text: "保留的材料")
@@ -332,7 +340,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         model.thought = "尚未等到自动保存的中文 👩🏽‍💻"
         model.annotation = "最后一次附注"
@@ -360,7 +369,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         var closed = false
         model.dismissQuickCapture = { closed = true }
@@ -384,7 +394,8 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)")
+            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            client: CaptureClient(database: PeerDatabase()))
         defer { model.cancelWork() }
         let other = CaptureRecord(payload: CapturePayload(materials: [Material(text: "另一份草稿")]))
         try await model.store.saveDraft(other)

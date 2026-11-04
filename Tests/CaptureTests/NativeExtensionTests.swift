@@ -9,7 +9,6 @@ import Testing
     var stops = 0
     func start() throws { starts += 1 }
     func stop() async throws { stops += 1 }
-    func showMain() {}
 }
 
 @Test @MainActor func nativeExtensionLifecycleWorksWithoutAnyConnection() async throws {

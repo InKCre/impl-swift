@@ -3,7 +3,6 @@ import Logging
 import PostgresNIO
 
 public actor PeerDatabase {
-    public static let shared = PeerDatabase()
     public static let logger = Logger(label: "dev.inkcre.database")
     private struct Pool {
         let target: ConnectionTarget
@@ -14,7 +13,17 @@ public actor PeerDatabase {
     }
     private var pools: [UUID: Pool] = [:]
 
-    public init() {}
+    private let applicationVersion: String
+    private let name: String
+    private let labels: [String]
+    public init(
+        applicationVersion: String = "development",
+        name: String = "InKCre Peer", labels: [String] = []
+    ) {
+        self.applicationVersion = applicationVersion
+        self.name = name
+        self.labels = labels
+    }
 
     public func client(for target: ConnectionTarget, password: String) throws -> PostgresClient {
         try target.validate()
@@ -58,13 +67,15 @@ public actor PeerDatabase {
     public func register(_ target: ConnectionTarget, password: String) async throws {
         let client = try client(for: target, password: password)
         if pools[target.id]?.registered == true { return }
-        let name = Host.current().localizedName ?? "InKCre Mac"
+        let name = self.name
+        let labels = self.labels
+        let applicationVersion = self.applicationVersion
         try await withConnection(for: target, password: password) { connection in
             try await connection.withTransaction(logger: Self.logger) { connection in
                 try await connection.query(
                     """
                     INSERT INTO inkcre.peers (id,name,application_version,capabilities,config_schema,config,labels)
-                    VALUES (\(target.peerID),\(name),'0.1.0','[]','{}','{}',ARRAY['macOS'])
+                    VALUES (\(target.peerID),\(name),\(applicationVersion),'[]','{}','{}',\(labels))
                     ON CONFLICT (id) DO UPDATE SET application_version=EXCLUDED.application_version
                     """, logger: Self.logger)
                 try await connection.query(

@@ -1,4 +1,5 @@
 import AppKit
+import Capture
 import PeerCore
 import SwiftUI
 import Testing
@@ -124,7 +125,8 @@ struct HostInterfaceTests {
             }
         }
         let captureModel = try CaptureModel(
-            directory: directory.appendingPathComponent("capture"), identity: domain)
+            directory: directory.appendingPathComponent("capture"), identity: domain,
+            client: CaptureClient(database: PeerDatabase()))
         defer { captureModel.cancelWork() }
         window.replaceCaptureSettings(
             with: NSHostingController(rootView: CaptureSettingsView(model: captureModel)))

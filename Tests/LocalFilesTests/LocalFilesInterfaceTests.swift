@@ -72,7 +72,7 @@ struct LocalFilesInterfaceTests {
                 as? String == "标题"
         }
         #expect(!window.isVisible)
-        let database = PeerDatabase.shared
+        let database = context.database
         let pool = try await database.client(
             for: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]))
         let catalogVersion = try await pool.query(
