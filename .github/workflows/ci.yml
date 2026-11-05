@@ -21,3 +21,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 检查格式、lint 与 SwiftPM 测试
         run: bash scripts/check.sh
+
+      - name: 检查独立 Core 消费
+        run: bash scripts/check-core.sh

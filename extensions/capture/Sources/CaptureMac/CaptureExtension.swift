@@ -96,7 +96,8 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         do {
             let model = try CaptureModel(
                 directory: context.directory.appendingPathComponent("extensions/inkcre-capture"),
-                identity: context.identity, connections: context.connections)
+                identity: context.identity, connections: context.connections,
+                client: CaptureClient(database: context.database))
             self.model = model
             let panel = CapturePanel(
                 contentRect: NSRect(x: 0, y: 0, width: 570, height: 640),

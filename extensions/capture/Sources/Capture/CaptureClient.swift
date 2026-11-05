@@ -31,7 +31,7 @@ public struct CaptureClient: CaptureTransport {
         return descriptor
     }()
     private let database: PeerDatabase
-    public init(database: PeerDatabase = .shared) { self.database = database }
+    public init(database: PeerDatabase) { self.database = database }
 
     public func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? {
         guard let target = record.target, let payload = record.payload else {

@@ -293,7 +293,7 @@ func nativeSourceUpdatesCurrentGraphAndPreservesFailedAndDeletedBodies() async t
         id: 1, config: DirectoryConfig(peer: target.peerID, path: folder.path), block: 3,
         state: DirectoryState())
     #expect(unchanged.content == nil && !unchanged.changes(original.metadata))
-    try await LocalFileClient(target: target, password: "unused").save(
+    try await LocalFileClient(target: target, password: "unused", database: PeerDatabase()).save(
         unchanged, replacing: record, source: source)
     var missing = original.metadata
     missing.available = false

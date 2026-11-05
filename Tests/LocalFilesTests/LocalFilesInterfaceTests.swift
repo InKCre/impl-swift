@@ -72,7 +72,7 @@ struct LocalFilesInterfaceTests {
                 as? String == "标题"
         }
         #expect(!window.isVisible)
-        let database = PeerDatabase.shared
+        let database = context.database
         let pool = try await database.client(
             for: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]))
         let catalogVersion = try await pool.query(
@@ -149,7 +149,8 @@ struct LocalFilesInterfaceTests {
         try await snapshot(window, name: "files-failure")
         let restoredSource = try #require(model.source)
         let client = LocalFileClient(
-            target: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]))
+            target: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]),
+            database: context.database)
         model.remove(restoredSource)
         try await until { model.sources.isEmpty && !model.working }
         #expect(try await client.records(source: restoredSource).count == 6)

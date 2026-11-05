@@ -74,7 +74,7 @@ final class CaptureModel: ObservableObject {
 
     init(
         directory: URL, identity: String, connections: ConnectionSettings? = nil,
-        client: any CaptureTransport = CaptureClient()
+        client: any CaptureTransport
     ) throws {
         self.connections =
             connections

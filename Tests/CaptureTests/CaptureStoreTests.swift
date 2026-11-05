@@ -46,8 +46,11 @@ struct CaptureStoreTests {
         try await connections.save(target)
         #expect(try await store.pendingRecords().isEmpty)
         #expect(
-            try await CaptureQueue(store: store, connections: connections, credentials: credentials)
-                .process(force: true)
+            try await CaptureQueue(
+                store: store, connections: connections, credentials: credentials,
+                client: CaptureClient(database: PeerDatabase())
+            )
+            .process(force: true)
                 == false)
         let retained = try #require(try await store.record(draft.id))
         #expect(retained.state == .cancelled)

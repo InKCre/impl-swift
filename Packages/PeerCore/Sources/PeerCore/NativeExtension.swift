@@ -16,5 +16,4 @@ public protocol NativeExtension: AnyObject {
     var descriptor: NativeExtensionDescriptor { get }
     func start() throws
     func stop() async throws
-    func showMain()
 }

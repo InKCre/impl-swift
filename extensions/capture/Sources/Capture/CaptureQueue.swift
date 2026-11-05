@@ -12,7 +12,7 @@ public actor CaptureQueue {
 
     public init(
         store: CaptureStore, connections: ConnectionSettings, credentials: CredentialStore,
-        client: any CaptureTransport = CaptureClient()
+        client: any CaptureTransport
     ) {
         self.connections = connections
         self.store = store

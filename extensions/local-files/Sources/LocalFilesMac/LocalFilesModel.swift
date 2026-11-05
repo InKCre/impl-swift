@@ -381,7 +381,8 @@ public final class LocalFilesModel: ObservableObject {
     private func client(_ target: ConnectionTarget) async throws -> LocalFileClient {
         let connection = try await context.connections.resolve(target)
         return LocalFileClient(
-            target: connection, password: try context.credentials.read(for: connection.id))
+            target: connection, password: try context.credentials.read(for: connection.id),
+            database: context.database)
     }
 
     private func saveBindings() throws {

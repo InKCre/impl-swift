@@ -48,7 +48,14 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         let directory = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(identity)
-        self.init(context: PeerHostContext(identity: identity, directory: directory))
+        self.init(
+            context: PeerHostContext(
+                identity: identity, directory: directory,
+                database: PeerDatabase(
+                    applicationVersion: Bundle.main.object(
+                        forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+                        ?? "development",
+                    name: Host.current().localizedName ?? "InKCre Mac", labels: ["macOS"])))
     }
 
     init(context: PeerHostContext, defaults: UserDefaults = .standard) {
@@ -99,12 +106,12 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
                 do {
                     try await reloadConnections()
                     if let target = connection {
-                        try await PeerDatabase.shared.register(
+                        try await context.database.register(
                             target, password: context.credentials.read(for: target.id))
                     }
                     connectionIssue = nil
                 } catch { connectionIssue = PeerDatabase.failure(error).localizedDescription }
-                let failures = await PeerDatabase.shared.renewLeases()
+                let failures = await context.database.renewLeases()
                 if let id = connection?.id, let failure = failures[id] { connectionIssue = failure }
                 updateStatus()
                 do { try await Task.sleep(for: .seconds(30)) } catch { break }
@@ -244,7 +251,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
     {
         let connection = try await context.connections.resolve(target)
         do {
-            try await PeerDatabase.shared.useBundledVersion(
+            try await context.database.useBundledVersion(
                 descriptor, target: connection,
                 password: context.credentials.read(for: connection.id))
             await localFiles.model.refresh()
@@ -344,7 +351,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
                 try await captureStopped
                 try await filesStopped
                 await presence?.value
-                await PeerDatabase.shared.shutdown()
+                await context.database.shutdown()
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
                 show(error)
