@@ -48,7 +48,7 @@ struct CaptureStoreTests {
         #expect(
             try await CaptureQueue(
                 store: store, connections: connections, credentials: credentials,
-                client: CaptureClient(database: PeerDatabase())
+                writer: CaptureWriter(database: PeerDatabase())
             )
             .process(force: true)
                 == false)

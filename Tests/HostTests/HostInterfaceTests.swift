@@ -126,7 +126,7 @@ struct HostInterfaceTests {
         }
         let captureModel = try CaptureModel(
             directory: directory.appendingPathComponent("capture"), identity: domain,
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { captureModel.cancelWork() }
         window.replaceCaptureSettings(
             with: NSHostingController(rootView: CaptureSettingsView(model: captureModel)))

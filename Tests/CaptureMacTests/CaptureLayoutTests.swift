@@ -16,7 +16,7 @@ struct CaptureLayoutTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.layout.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         for width in [520, 550, 790] {
             let renderer = ImageRenderer(
@@ -64,7 +64,7 @@ struct CaptureLayoutTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.layout.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let view = NSHostingView(
             rootView: PeerConnectionEditor(
@@ -97,7 +97,7 @@ struct CaptureLayoutTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.surfaces.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
@@ -143,7 +143,7 @@ struct CaptureLayoutTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
             directory: directory, identity: "dev.inkcre.journey-layout.\(UUID().uuidString)",
-            client: CaptureClient(database: PeerDatabase()))
+            writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),

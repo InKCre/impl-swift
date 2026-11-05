@@ -137,31 +137,31 @@ func nativeSourceUpdatesCurrentGraphAndPreservesFailedAndDeletedBodies() async t
         database: try #require(env["INKCRE_FILES_TEST_DATABASE"]), username: "inkcre_core",
         tls: .disable)
     let database = PeerDatabase()
-    let client = LocalFileClient(
+    let repository = LocalFilesRepository(
         target: target, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]),
         database: database)
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     try fileFixtures(directory)
-    try await client.prepare()
-    let source = try await client.createDirectory(path: directory.path)
-    #expect(try await client.sources().contains { $0.id == source.id })
+    try await repository.prepare()
+    let source = try await repository.createDirectory(path: directory.path)
+    #expect(try await repository.sources().contains { $0.id == source.id })
     let otherTarget = ConnectionTarget(
         host: target.host, port: target.port, database: target.database, username: target.username,
         tls: .disable)
-    let otherClient = LocalFileClient(
+    let otherRepository = LocalFilesRepository(
         target: otherTarget, password: try #require(env["INKCRE_FILES_TEST_PASSWORD"]),
         database: database)
-    try await otherClient.prepare()
-    let otherSource = try await otherClient.createDirectory(path: directory.path)
+    try await otherRepository.prepare()
+    let otherSource = try await otherRepository.createDirectory(path: directory.path)
     let staleRow = DirectorySource(
         id: otherSource.id, config: source.config, block: source.block, state: source.state)
-    await #expect(throws: (any Error).self) { try await otherClient.remove(staleRow) }
-    #expect(try await otherClient.sources().count == 1)
-    try await otherClient.remove(otherSource)
-    let first = try await DirectoryScanner.scan(source: source, client: client)
+    await #expect(throws: (any Error).self) { try await otherRepository.remove(staleRow) }
+    #expect(try await otherRepository.sources().count == 1)
+    try await otherRepository.remove(otherSource)
+    let first = try await DirectoryScanner.scan(source: source, repository: repository)
     #expect(first.errors == 0)
-    let original = try await client.records(source: source)
+    let original = try await repository.records(source: source)
     #expect(
         original.count == 6 && original.allSatisfy { $0.bodyID != nil && $0.metadata.available })
     let note = try #require(original.first { $0.name == "note.md" })
@@ -184,9 +184,9 @@ func nativeSourceUpdatesCurrentGraphAndPreservesFailedAndDeletedBodies() async t
     let noteURL = directory.appendingPathComponent("note.md")
     let originalBytes = try Data(contentsOf: noteURL)
     try Data([0xff, 0x00, 0x13]).write(to: noteURL, options: .atomic)
-    _ = try await DirectoryScanner.scan(source: source, client: client)
+    _ = try await DirectoryScanner.scan(source: source, repository: repository)
     let failedLegacy = try #require(
-        try await client.records(source: source).first { $0.id == note.id })
+        try await repository.records(source: source).first { $0.id == note.id })
     #expect(failedLegacy.bodyID == note.bodyID && failedLegacy.bodyResolver == "core.text.v1")
     #expect(failedLegacy.metadata.revision == legacy.revision)
     let legacyRoot = try await pool.query("SELECT resolver FROM inkcre.blocks WHERE id=\(note.id)")
@@ -194,8 +194,9 @@ func nativeSourceUpdatesCurrentGraphAndPreservesFailedAndDeletedBodies() async t
         try await legacyRoot.decode(String.self).first { _ in true }
             == LocalFilesContract.legacyResolver)
     try originalBytes.write(to: noteURL, options: .atomic)
-    _ = try await DirectoryScanner.scan(source: source, client: client)
-    let upgraded = try #require(try await client.records(source: source).first { $0.id == note.id })
+    _ = try await DirectoryScanner.scan(source: source, repository: repository)
+    let upgraded = try #require(
+        try await repository.records(source: source).first { $0.id == note.id })
     #expect(upgraded.bodyID == note.bodyID && upgraded.bodyResolver == "core.markdown.v1")
     #expect(upgraded.metadata.revision?.extractor == LocalFilesContract.extractor)
     let keptReference = try await pool.query(
@@ -203,60 +204,62 @@ func nativeSourceUpdatesCurrentGraphAndPreservesFailedAndDeletedBodies() async t
     #expect(try await keptReference.decode(Int.self).first { _ in true } == note.bodyID)
     let url = directory.appendingPathComponent("note.md")
     try Data("# 修改后\n\n当前正文".utf8).write(to: url, options: .atomic)
-    _ = try await DirectoryScanner.scan(source: source, client: client)
-    var records = try await client.records(source: source)
+    _ = try await DirectoryScanner.scan(source: source, repository: repository)
+    var records = try await repository.records(source: source)
     #expect(records.count == 6)
     #expect(
-        try await client.content(for: #require(records.first { $0.id == note.id }))
+        try await repository.content(for: #require(records.first { $0.id == note.id }))
             == "# 修改后\n\n当前正文")
     try FileManager.default.moveItem(at: url, to: directory.appendingPathComponent("renamed.md"))
-    _ = try await DirectoryScanner.scan(source: source, client: client)
-    records = try await client.records(source: source)
+    _ = try await DirectoryScanner.scan(source: source, repository: repository)
+    records = try await repository.records(source: source)
     #expect(records.first { $0.id == note.id }?.name == "renamed.md")
     let pdf = try #require(records.first { $0.name == "note.pdf" })
-    let pdfText = try await client.content(for: pdf)
+    let pdfText = try await repository.content(for: pdf)
     try Data("broken pdf".utf8).write(
         to: directory.appendingPathComponent("note.pdf"), options: .atomic)
-    let failed = try await DirectoryScanner.scan(source: source, client: client)
+    let failed = try await DirectoryScanner.scan(source: source, repository: repository)
     #expect(failed.errors == 1)
-    records = try await client.records(source: source)
-    #expect(try await client.content(for: #require(records.first { $0.id == pdf.id })) == pdfText)
+    records = try await repository.records(source: source)
+    #expect(
+        try await repository.content(for: #require(records.first { $0.id == pdf.id })) == pdfText)
     #expect(records.first { $0.id == pdf.id }?.metadata.revision == pdf.metadata.revision)
     try FileManager.default.removeItem(at: directory.appendingPathComponent("renamed.md"))
-    _ = try await DirectoryScanner.scan(source: source, client: client)
-    records = try await client.records(source: source)
+    _ = try await DirectoryScanner.scan(source: source, repository: repository)
+    records = try await repository.records(source: source)
     #expect(records.first { $0.id == note.id }?.metadata.available == false)
     #expect(
-        try await client.content(for: #require(records.first { $0.id == note.id }))
+        try await repository.content(for: #require(records.first { $0.id == note.id }))
             == "# 修改后\n\n当前正文")
     let moved = directory.appendingPathExtension("offline")
     try FileManager.default.moveItem(at: directory, to: moved)
     await #expect(throws: (any Error).self) {
-        try await DirectoryScanner.scan(source: source, client: client)
+        try await DirectoryScanner.scan(source: source, repository: repository)
     }
     try FileManager.default.moveItem(at: moved, to: directory)
-    #expect(try await client.records(source: source).filter { $0.metadata.available }.count == 5)
-    try await client.reportIssue("合成目录暂时离线", source: source)
-    #expect(try await client.sources().first { $0.id == source.id }?.state.issue == "合成目录暂时离线")
+    #expect(
+        try await repository.records(source: source).filter { $0.metadata.available }.count == 5)
+    try await repository.reportIssue("合成目录暂时离线", source: source)
+    #expect(try await repository.sources().first { $0.id == source.id }?.state.issue == "合成目录暂时离线")
 
     let invalidParameters = "{\"source\":\(source.id),\"config\":{\"unsupported\":true}}"
     let invalidRows = try await pool.query(
         "INSERT INTO inkcre.jobs(type,parameters,timeout_seconds,status) VALUES (\(SourceJobs.type),\(invalidParameters)::jsonb,300,'pending') RETURNING id"
     )
     let invalidID = try #require(try await invalidRows.decode(Int.self).first { _ in true })
-    #expect(try await client.pendingScans(source).isEmpty)
+    #expect(try await repository.pendingScans(source).isEmpty)
     let invalidStatus = try await pool.query(
         "SELECT status::text FROM inkcre.jobs WHERE id=\(invalidID)")
     #expect(try await invalidStatus.decode(String.self).first { _ in true } == "failed")
-    let jobID = try await client.submitScan(source)
-    let job = try #require(try await client.claim(jobID, source: source))
-    #expect(try await client.claim(jobID, source: source) == nil)
-    let result = try await DirectoryScanner.scan(source: source, client: client, job: job)
-    try await client.close(job, status: "failed", state: result)
-    let cancelledID = try await client.submitScan(source)
-    let cancelled = try #require(try await client.claim(cancelledID, source: source))
+    let jobID = try await repository.submitScan(source)
+    let job = try #require(try await repository.claim(jobID, source: source))
+    #expect(try await repository.claim(jobID, source: source) == nil)
+    let result = try await DirectoryScanner.scan(source: source, repository: repository, job: job)
+    try await repository.close(job, status: "failed", state: result)
+    let cancelledID = try await repository.submitScan(source)
+    let cancelled = try #require(try await repository.claim(cancelledID, source: source))
     await #expect(throws: CancellationError.self) {
-        try await DirectoryScanner.scan(source: source, client: client, job: cancelled) {
+        try await DirectoryScanner.scan(source: source, repository: repository, job: cancelled) {
             progress in
             if progress.completed == 1 {
                 do {
@@ -266,15 +269,16 @@ func nativeSourceUpdatesCurrentGraphAndPreservesFailedAndDeletedBodies() async t
             }
         }
     }
-    try await client.close(cancelled, status: "aborted", state: DirectoryState())
-    try await client.setEnabled(false, source: source)
+    try await repository.close(cancelled, status: "aborted", state: DirectoryState())
+    try await repository.setEnabled(false, source: source)
     await #expect(throws: (any Error).self) {
-        try await DirectoryScanner.scan(source: source, client: client)
+        try await DirectoryScanner.scan(source: source, repository: repository)
     }
-    await #expect(throws: (any Error).self) { try await client.remove(source) }
-    try await client.remove(try #require(try await client.sources().first { $0.id == source.id }))
-    #expect(try await client.sources().isEmpty)
-    #expect(try await client.records(source: source).count == 6)
+    await #expect(throws: (any Error).self) { try await repository.remove(source) }
+    try await repository.remove(
+        try #require(try await repository.sources().first { $0.id == source.id }))
+    #expect(try await repository.sources().isEmpty)
+    #expect(try await repository.records(source: source).count == 6)
     await database.shutdown()
 }
 
@@ -293,8 +297,9 @@ func nativeSourceUpdatesCurrentGraphAndPreservesFailedAndDeletedBodies() async t
         id: 1, config: DirectoryConfig(peer: target.peerID, path: folder.path), block: 3,
         state: DirectoryState())
     #expect(unchanged.content == nil && !unchanged.changes(original.metadata))
-    try await LocalFileClient(target: target, password: "unused", database: PeerDatabase()).save(
-        unchanged, replacing: record, source: source)
+    try await LocalFilesRepository(target: target, password: "unused", database: PeerDatabase())
+        .save(
+            unchanged, replacing: record, source: source)
     var missing = original.metadata
     missing.available = false
     #expect(unchanged.changes(missing))

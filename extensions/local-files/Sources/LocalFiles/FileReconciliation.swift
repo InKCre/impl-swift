@@ -2,7 +2,7 @@ import Foundation
 import PeerCore
 import PostgresNIO
 
-extension LocalFileClient {
+extension LocalFilesRepository {
     public func submitScan(_ source: DirectorySource) async throws -> Int {
         return try await database.withConnection(for: target, password: password) { client in
             return try await client.withTransaction(logger: PeerDatabase.logger) { connection in

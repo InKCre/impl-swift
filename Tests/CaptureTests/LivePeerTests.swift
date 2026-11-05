@@ -14,7 +14,7 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
         tls: .disable)
     let password = try #require(env["INKCRE_CAPTURE_TEST_PASSWORD"])
     let database = PeerDatabase()
-    let client = CaptureClient(database: database)
+    let writer = CaptureWriter(database: database)
     let pg = try await database.client(for: target, password: password)
     struct Fixture: Decodable { let payload: CapturePayload }
     let fixtureURL = try #require(
@@ -27,9 +27,9 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     var record = CaptureRecord(payload: payload)
     record.target = target
     let submission = record
-    async let a = client.submit(submission, secret: password)
-    async let b = client.submit(submission, secret: password)
-    async let c = client.submit(submission, secret: password)
+    async let a = writer.submit(submission, secret: password)
+    async let b = writer.submit(submission, secret: password)
+    async let c = writer.submit(submission, secret: password)
     let results = try await [a, b, c]
     let result = try #require(results.first)
     #expect(results.allSatisfy { $0 == result })
@@ -68,21 +68,21 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     _ = try await store.markDispatch(payload.submissionID)
     let reopened = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
     try await CaptureQueue(
-        store: reopened, connections: connections, credentials: credentials, client: client
+        store: reopened, connections: connections, credentials: credentials, writer: writer
     ).process(
         force: true)
     let recovered = try #require(try await reopened.record(payload.submissionID))
     #expect(recovered.state == .confirmed && recovered.payload == nil)
     #expect(recovered.result == result)
     try await database.useBundledVersion(
-        CaptureClient.descriptor, target: target, password: password)
+        CaptureWriter.descriptor, target: target, password: password)
 
     var changed = payload
     changed.annotation = "另一份材料"
     var conflict = CaptureRecord(payload: changed)
     conflict.target = target
     await #expect(throws: PeerError.self) {
-        _ = try await client.submit(conflict, secret: password)
+        _ = try await writer.submit(conflict, secret: password)
     }
 
     let before = try await pg.query(
@@ -106,23 +106,23 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     }
     #expect(before == after)
     try await pg.query("DELETE FROM inkcre.blocks WHERE id=\(result.rootBlockID)")
-    #expect(try await client.recover(record, secret: password) == nil)
+    #expect(try await writer.recover(record, secret: password) == nil)
     // A locally confirmed capture is never queued again, even if its shared root is deleted.
     #expect(try await reopened.pendingRecords().isEmpty)
     try await pg.query(
         "UPDATE inkcre.extension_peer_participations SET enabled=false WHERE peer_id=\(target.peerID)"
     )
     do {
-        _ = try await client.submit(record, secret: password)
+        _ = try await writer.submit(record, secret: password)
         Issue.record("停用后不得继续共享写入")
     } catch PeerError.needsAction(let message) { #expect(message.contains("停用")) }
     await #expect(throws: PeerError.self) {
-        _ = try await client.submit(record, secret: password)
+        _ = try await writer.submit(record, secret: password)
     }
     try await pg.query(
         "DELETE FROM inkcre.extension_peer_participations WHERE peer_id=\(target.peerID)")
     await #expect(throws: PeerError.self) {
-        _ = try await client.submit(record, secret: password)
+        _ = try await writer.submit(record, secret: password)
     }
     let removed = try await pg.query(
         "SELECT count(*) FROM inkcre.extension_peer_participations WHERE peer_id=\(target.peerID)"
@@ -130,32 +130,32 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     #expect(removed == 0)
     // An explicit enable is allowed to create a first participation before Capture starts.
     try await database.useBundledVersion(
-        CaptureClient.descriptor, target: target, password: password)
-    _ = try await client.submit(record, secret: password)
+        CaptureWriter.descriptor, target: target, password: password)
+    _ = try await writer.submit(record, secret: password)
     let first = ConnectionTarget(
         host: target.host, port: target.port, database: target.database, username: target.username,
         tls: target.tls)
     try await database.useBundledVersion(
-        CaptureClient.descriptor, target: first, password: password)
+        CaptureWriter.descriptor, target: first, password: password)
     var firstRecord = CaptureRecord(payload: CapturePayload(materials: [Material(text: "首次准入")]))
     firstRecord.target = first
     try await pg.query(
         "DELETE FROM inkcre.extension_peer_participations WHERE peer_id=\(first.peerID)")
     await #expect(throws: PeerError.self) {
-        _ = try await client.submit(firstRecord, secret: password)
+        _ = try await writer.submit(firstRecord, secret: password)
     }
     let removedBeforeFirstJoin = try await pg.query(
         "SELECT count(*) FROM inkcre.extension_peer_participations WHERE peer_id=\(first.peerID)"
     ).decode(Int.self).first { _ in true }
     #expect(removedBeforeFirstJoin == 0)
     try await database.useBundledVersion(
-        CaptureClient.descriptor, target: first, password: password)
-    _ = try await client.submit(firstRecord, secret: password)
+        CaptureWriter.descriptor, target: first, password: password)
+    _ = try await writer.submit(firstRecord, secret: password)
     try await pg.query(
         "UPDATE inkcre.extension_peer_participations SET version='0.0.9',enabled=false WHERE peer_id=\(first.peerID)"
     )
     await #expect(throws: PeerError.self) {
-        try await database.join(first, password: password, extension: CaptureClient.descriptor)
+        try await database.join(first, password: password, extension: CaptureWriter.descriptor)
     }
     let old = try await pg.query(
         "SELECT version,enabled FROM inkcre.extension_peer_participations WHERE peer_id=\(first.peerID)"
@@ -163,8 +163,8 @@ func nativeTransactionCommitsOriginalImageOnceAndRecoversAfterRestart() async th
     .decode((String, Bool).self).first { _ in true }
     #expect(old?.0 == "0.0.9" && old?.1 == false)
     try await database.useBundledVersion(
-        CaptureClient.descriptor, target: first, password: password)
-    try await database.join(first, password: password, extension: CaptureClient.descriptor)
+        CaptureWriter.descriptor, target: first, password: password)
+    try await database.join(first, password: password, extension: CaptureWriter.descriptor)
     let registeredVersion = try await pg.query(
         "SELECT xmin::text FROM inkcre.peers WHERE id=\(first.peerID)"
     )

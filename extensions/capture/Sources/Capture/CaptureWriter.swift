@@ -2,12 +2,12 @@ import Foundation
 import PeerCore
 import PostgresNIO
 
-public protocol CaptureTransport: Sendable {
+public protocol CaptureWriting: Sendable {
     func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult?
     func submit(_ record: CaptureRecord, secret: String) async throws -> CaptureResult
 }
 
-public struct CaptureClient: CaptureTransport {
+public struct CaptureWriter: CaptureWriting {
     public static let descriptor: NativeExtensionDescriptor = {
         let bundle: Bundle
         if Bundle.main.bundleURL.pathExtension == "app" {
