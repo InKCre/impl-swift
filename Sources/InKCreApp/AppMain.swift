@@ -107,7 +107,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
                     try await reloadConnections()
                     if let target = connection {
                         try await context.database.register(
-                            target, password: context.credentials.read(for: target.id))
+                            target, credentials: .keychain(context.credentials))
                     }
                     connectionIssue = nil
                 } catch { connectionIssue = PeerDatabase.failure(error).localizedDescription }
@@ -253,7 +253,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         do {
             try await context.database.useBundledVersion(
                 descriptor, target: connection,
-                password: context.credentials.read(for: connection.id))
+                credentials: .keychain(context.credentials))
             await localFiles.model.refresh()
         } catch { throw PeerDatabase.failure(error) }
     }
@@ -297,7 +297,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         }
         let content = NSHostingView(
             rootView: PeerConnectionEditor(
-                settings: context.connections, credentials: context.credentials,
+                context: context,
                 target: target, saveTitle: onFinished == nil ? "保存" : "保存并返回采集", onCancel: close,
                 onSaved: { [weak self] target in
                     self?.changingConnection = true

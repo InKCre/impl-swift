@@ -61,8 +61,9 @@ final class CaptureModel: ObservableObject {
     var showQuick: (() -> Void)?
     var editConnection: ((ConnectionTarget?, (@MainActor () -> Void)?) -> Void)?
     let store: CaptureStore
-    let credentials: CredentialStore
-    let connections: ConnectionSettings
+    private let context: PeerHostContext
+    var credentials: CredentialStore { context.credentials }
+    var connections: ConnectionSettings { context.connections }
     private let queue: CaptureQueue
     private var saveTask: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
@@ -72,18 +73,13 @@ final class CaptureModel: ObservableObject {
     private var actions: [UUID: Task<Void, Never>] = [:]
     private var stopping = false
 
-    init(
-        directory: URL, identity: String, connections: ConnectionSettings? = nil,
-        writer: any CaptureWriting
-    ) throws {
-        self.connections =
-            connections
-            ?? ConnectionSettings(url: directory.appendingPathComponent("connection.json"))
+    init(directory: URL, context: PeerHostContext, writer: any CaptureWriting) throws {
+        self.context = context
         shortcuts = try GlobalShortcuts()
         store = try CaptureStore(url: directory.appendingPathComponent("capture.sqlite"))
-        credentials = CredentialStore(service: "\(identity).connections")
         queue = CaptureQueue(
-            store: store, connections: self.connections, credentials: credentials, writer: writer)
+            store: store, connections: context.connections, credentials: context.credentials,
+            writer: writer)
     }
 
     func canPerform(_ action: ShortcutAction, isEditor: Bool, isQuickPanel: Bool) -> Bool {
@@ -447,7 +443,8 @@ final class CaptureModel: ObservableObject {
             let current = try await store.record(record.id),
             let target = current.target, current.state != .draft, current.state != .confirmed
         else { throw PeerError.invalid("这条记录已变更，请关闭后重新查看。") }
-        try credentials.save(password, for: target.id)
+        let connection = try await connections.resolve(target)
+        try await context.savePassword(password, for: connection)
         try await store.retry(current.id)
         try await refresh()
         perform { [self] in await sendPending(force: true) }

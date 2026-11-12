@@ -3,8 +3,12 @@ import PeerCore
 import PostgresNIO
 
 public protocol CaptureWriting: Sendable {
-    func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult?
-    func submit(_ record: CaptureRecord, secret: String) async throws -> CaptureResult
+    /// Prepare authentication before the queue records a possible dispatch.
+    func prepare(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+    func recover(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+        -> CaptureResult?
+    func submit(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+        -> CaptureResult
 }
 
 public struct CaptureWriter: CaptureWriting {
@@ -33,12 +37,24 @@ public struct CaptureWriter: CaptureWriting {
     private let database: PeerDatabase
     public init(database: PeerDatabase) { self.database = database }
 
+    public func prepare(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws {
+        guard let target = record.target else { throw PeerError.invalid("待办缺少目标。") }
+        _ = try await database.client(for: target, credentials: credentials)
+    }
+
     public func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? {
+        try await recover(record, credentials: .password(secret))
+    }
+
+    public func recover(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+        -> CaptureResult?
+    {
         guard let target = record.target, let payload = record.payload else {
             throw PeerError.invalid("待办缺少材料或目标。")
         }
         do {
-            return try await database.withConnection(for: target, password: secret) { connection in
+            return try await database.withConnection(for: target, credentials: credentials) {
+                connection in
                 try await Self.result(
                     from: connection.query(Self.lookup(record.id), logger: PeerDatabase.logger),
                     id: record.id, digest: payload.canonicalDigest())
@@ -66,14 +82,21 @@ public struct CaptureWriter: CaptureWriting {
     }
 
     public func submit(_ record: CaptureRecord, secret: String) async throws -> CaptureResult {
+        try await submit(record, credentials: .password(secret))
+    }
+
+    public func submit(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+        -> CaptureResult
+    {
         guard let target = record.target, let payload = record.payload else {
             throw PeerError.invalid("待办缺少冻结材料或目标。")
         }
         let command = try CaptureCommit(payload)
         do {
-            try await database.register(target, password: secret)
-            try await database.join(target, password: secret, extension: Self.descriptor)
-            return try await database.withConnection(for: target, password: secret) { connection in
+            try await database.register(target, credentials: credentials)
+            try await database.join(target, credentials: credentials, extension: Self.descriptor)
+            return try await database.withConnection(for: target, credentials: credentials) {
+                connection in
                 try await connection.withTransaction(logger: PeerDatabase.logger) { connection in
                     try await PeerDatabase.requireSelection(
                         Self.descriptor, peerID: target.peerID, on: connection)

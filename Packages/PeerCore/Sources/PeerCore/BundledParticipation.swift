@@ -7,10 +7,17 @@ extension PeerDatabase {
         _ target: ConnectionTarget, password: String,
         extension descriptor: NativeExtensionDescriptor
     ) async throws {
+        try await join(target, credentials: .password(password), extension: descriptor)
+    }
+
+    public func join(
+        _ target: ConnectionTarget, credentials: DatabaseCredentials,
+        extension descriptor: NativeExtensionDescriptor
+    ) async throws {
         let defaults = UserDefaults(suiteName: "dev.inkcre.native-participation")!
         let key = "\(target.peerID).\(descriptor.name)"
         let firstJoin = !defaults.bool(forKey: key)
-        let issue: String? = try await withConnection(for: target, password: password) {
+        let issue: String? = try await withConnection(for: target, credentials: credentials) {
             connection in
             try await connection.withTransaction(logger: Self.logger) { connection in
                 if firstJoin {
@@ -60,8 +67,15 @@ extension PeerDatabase {
     public func useBundledVersion(
         _ descriptor: NativeExtensionDescriptor, target: ConnectionTarget, password: String
     ) async throws {
-        try await register(target, password: password)
-        try await withConnection(for: target, password: password) { connection in
+        try await useBundledVersion(descriptor, target: target, credentials: .password(password))
+    }
+
+    public func useBundledVersion(
+        _ descriptor: NativeExtensionDescriptor, target: ConnectionTarget,
+        credentials: DatabaseCredentials
+    ) async throws {
+        try await register(target, credentials: credentials)
+        try await withConnection(for: target, credentials: credentials) { connection in
             try await connection.withTransaction(logger: Self.logger) { connection in
                 try await connection.query(
                     "INSERT INTO inkcre.extensions(name) VALUES (\(descriptor.name)) ON CONFLICT (name) DO NOTHING",

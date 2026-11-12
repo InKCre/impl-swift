@@ -4,19 +4,24 @@ import PostgresNIO
 
 public struct LocalFilesRepository: Sendable {
     public let target: ConnectionTarget
-    let password: String
+    let credentials: DatabaseCredentials
     let database: PeerDatabase
     public init(target: ConnectionTarget, password: String, database: PeerDatabase) {
+        self.init(target: target, credentials: .password(password), database: database)
+    }
+
+    public init(target: ConnectionTarget, credentials: DatabaseCredentials, database: PeerDatabase)
+    {
         self.target = target
-        self.password = password
+        self.credentials = credentials
         self.database = database
     }
 
     public func prepare() async throws {
-        try await database.register(target, password: password)
+        try await database.register(target, credentials: credentials)
         try await database.join(
-            target, password: password, extension: LocalFilesContract.descriptor)
-        return try await database.withConnection(for: target, password: password) { client in
+            target, credentials: credentials, extension: LocalFilesContract.descriptor)
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             let config =
                 #"{"type":"object","additionalProperties":false,"properties":{"peer":{"type":"string","format":"uuid"},"path":{"type":"string","pattern":"^/"},"enabled":{"type":"boolean"}},"required":["peer","path","enabled"]}"#
             try await client.query(
@@ -37,7 +42,7 @@ public struct LocalFilesRepository: Sendable {
     }
 
     public func checkParticipation() async throws {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 try await PeerDatabase.requireSelection(
                     LocalFilesContract.descriptor, peerID: target.peerID, on: connection)
@@ -46,7 +51,7 @@ public struct LocalFilesRepository: Sendable {
     }
 
     public func sources() async throws -> [DirectorySource] {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             let rows = try await client.query(
                 "SELECT id,config::text,block,state::text FROM inkcre.sources WHERE type=\(LocalFilesContract.sourceType) AND config->>'peer'=\(target.peerID.uuidString.lowercased()) ORDER BY id",
                 logger: PeerDatabase.logger)
@@ -64,7 +69,7 @@ public struct LocalFilesRepository: Sendable {
         let config = DirectoryConfig(peer: target.peerID, path: path)
         _ = try PeerFileLocation(peer: config.peer, path: path)
         let serialized = try FileJSON.encode(config)
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             return try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 try await PeerDatabase.requireSelection(
                     LocalFilesContract.descriptor, peerID: target.peerID, on: connection)
@@ -102,7 +107,7 @@ public struct LocalFilesRepository: Sendable {
     }
 
     public func setEnabled(_ enabled: Bool, source: DirectorySource) async throws {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 var current = try await locked(
                     source.id, on: connection, expected: source.config, requireEnabled: false)
@@ -116,7 +121,7 @@ public struct LocalFilesRepository: Sendable {
     }
 
     public func remove(_ source: DirectorySource) async throws {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 _ = try await locked(
                     source.id, on: connection, expected: source.config, requireEnabled: false)
@@ -129,7 +134,7 @@ public struct LocalFilesRepository: Sendable {
     public func records(source: DirectorySource) async throws -> [FileRecord] {
         guard source.config.peer == target.peerID else { throw PeerError.invalid("目录不属于当前 Peer。") }
         guard let block = source.block else { return [] }
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             let rows = try await client.query(
                 """
                 SELECT b.id,b.resolver,b.content,t.id,t.resolver,t.storage FROM inkcre.relations managed JOIN inkcre.blocks b ON b.id=managed.to_
@@ -154,7 +159,7 @@ public struct LocalFilesRepository: Sendable {
 
     public func content(for record: FileRecord) async throws -> String? {
         guard let body = record.bodyID else { return nil }
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             let rows = try await client.query(
                 "SELECT content FROM inkcre.blocks WHERE id=\(body) AND resolver=\(record.bodyResolver) AND storage IS NULL",
                 logger: PeerDatabase.logger)

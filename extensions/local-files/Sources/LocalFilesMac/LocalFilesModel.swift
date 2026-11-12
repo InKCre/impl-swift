@@ -385,7 +385,7 @@ public final class LocalFilesModel: ObservableObject {
     private func repository(_ target: ConnectionTarget) async throws -> LocalFilesRepository {
         let connection = try await context.connections.resolve(target)
         return LocalFilesRepository(
-            target: connection, password: try context.credentials.read(for: connection.id),
+            target: connection, credentials: .keychain(context.credentials),
             database: context.database)
     }
 

@@ -2,8 +2,7 @@ import PeerCore
 import SwiftUI
 
 public struct PeerConnectionEditor: View {
-    private let settings: ConnectionSettings
-    private let credentials: CredentialStore
+    private let context: PeerHostContext
     private let onSaved: @MainActor (ConnectionTarget) -> Void
     private let onCancel: @MainActor () -> Void
     private let target: ConnectionTarget?
@@ -22,13 +21,12 @@ public struct PeerConnectionEditor: View {
     @FocusState private var addressFocused: Bool
 
     public init(
-        settings: ConnectionSettings, credentials: CredentialStore, target: ConnectionTarget?,
+        context: PeerHostContext, target: ConnectionTarget?,
         saveTitle: String = "保存",
         onCancel: @escaping @MainActor () -> Void = {},
         onSaved: @escaping @MainActor (ConnectionTarget) -> Void
     ) {
-        self.settings = settings
-        self.credentials = credentials
+        self.context = context
         self.target = target
         self.saveTitle = saveTitle
         self.onCancel = onCancel
@@ -73,11 +71,10 @@ public struct PeerConnectionEditor: View {
                     Task {
                         defer { saving = false }
                         do {
-                            let saved = try await settings.saveEdited(
+                            let saved = try await context.saveEdited(
                                 host: server, port: port, database: database, username: username,
                                 tls: tls,
-                                web: web, password: secret, name: name, previous: target,
-                                credentials: credentials)
+                                web: web, password: secret, name: name, previous: target)
                             onSaved(saved)
                             secret = ""
                             dismiss()

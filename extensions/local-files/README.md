@@ -2,7 +2,7 @@
 
 `LocalFiles` 拥有位置 URI、提取、Source 配置、对账和图更新；`LocalFilesMac` 拥有书签、FSEvents、监视生命周期及原生界面。Host 静态组合此扩展与 Capture。共享合同位于 InKCre/docs 的 `20-product-tdd/local-files-contract.md`，无需 Python 服务或新数据库迁移。
 
-Source 配置在 info-base，书签及原连接绑定在 Host 的 `extensions/inkcre-local-files/directories.json`，权限 0600。密码仅存系统 Keychain。先监视再扫描；通知合并为待核对状态，不保存事件日志。每 30 秒核对共享配置、待执行 Job 和失败扫描，正常监视不会每 30 秒重新读取所有文件。每轮从原连接的 Keychain 取凭据。停止等待当前文件事务和提取结束，再释放监视与目录访问。
+Source 配置在 info-base，书签及原连接绑定在 Host 的 `extensions/inkcre-local-files/directories.json`，权限 0600。密码持久化于系统 Keychain。先监视再扫描；通知合并为待核对状态，不保存事件日志。每 30 秒核对共享配置、待执行 Job 和失败扫描，正常监视不会每 30 秒重新读取所有文件。每轮使用 Host 的同一数据库会话，仅在尚无会话时从原连接的 Keychain 取密。停止等待当前文件事务和提取结束，再释放监视与目录访问。
 
 列表与扫描只读取文件元数据和正文 ID；选中文件才读取该文件正文，修订变化后更新当前正文。未变化文件不进入逐文件写事务，完整扫描仍复核来源状态并处理失效文件。
 

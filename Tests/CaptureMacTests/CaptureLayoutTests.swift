@@ -15,7 +15,9 @@ struct CaptureLayoutTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.layout.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.layout.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         for width in [520, 550, 790] {
@@ -62,13 +64,11 @@ struct CaptureLayoutTests {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.layout.\(UUID().uuidString)",
-            writer: CaptureWriter(database: PeerDatabase()))
-        defer { model.cancelWork() }
+        let context = PeerHostContext(
+            identity: "dev.inkcre.layout.\(UUID().uuidString)", directory: directory)
         let view = NSHostingView(
             rootView: PeerConnectionEditor(
-                settings: model.connections, credentials: model.credentials, target: nil,
+                context: context, target: nil,
                 onSaved: { _ in }
             ).environment(\.colorScheme, .light).background(Color.white))
         let window = NSWindow(
@@ -96,7 +96,9 @@ struct CaptureLayoutTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.surfaces.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.surfaces.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let window = NSWindow(
@@ -142,7 +144,9 @@ struct CaptureLayoutTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.journey-layout.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.journey-layout.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let window = NSWindow(

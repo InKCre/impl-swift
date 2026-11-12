@@ -57,22 +57,26 @@ public actor CaptureQueue {
             guard let target = item.target else { continue }
             do {
                 let connection = try await connections.resolve(target)
-                let secret = try credentials.read(for: connection.id)
                 var outgoing = item
                 outgoing.target = connection
                 if item.attempts > 0,
-                    let result = try await writer.recover(outgoing, secret: secret)
+                    let result = try await writer.recover(
+                        outgoing, credentials: .keychain(credentials))
                 {
                     try await store.confirm(item.id, result: result)
                     changed = true
                     continue
+                }
+                if item.attempts == 0 {
+                    try await writer.prepare(outgoing, credentials: .keychain(credentials))
                 }
                 guard !isStopped, !Task.isCancelled else { return changed }
                 var dispatched = try await store.markDispatch(item.id)
                 dispatched.target = connection
                 changed = true
                 guard !isStopped, !Task.isCancelled else { return changed }
-                let result = try await writer.submit(dispatched, secret: secret)
+                let result = try await writer.submit(
+                    dispatched, credentials: .keychain(credentials))
                 try await store.confirm(item.id, result: result)
             } catch let error as PeerError {
                 let state: CaptureRecord.State
@@ -85,6 +89,7 @@ public actor CaptureQueue {
                 try await store.report(item.id, state: state, message: error.localizedDescription)
                 changed = true
             } catch {
+                if PeerDatabase.isCancellation(error) { return changed }
                 try await store.report(
                     item.id, state: .unknown,
                     message: "无法确认响应，原提交已保留。请检查服务版本后重试。"

@@ -75,11 +75,34 @@ public struct PeerHostContext: Sendable {
     public let directory: URL
     public let connections: ConnectionSettings
     public let credentials: CredentialStore
-    public init(identity: String, directory: URL, database: PeerDatabase = PeerDatabase()) {
+    public init(
+        identity: String, directory: URL, database: PeerDatabase = PeerDatabase(),
+        credentials: CredentialStore? = nil
+    ) {
         self.database = database
         self.identity = identity
         self.directory = directory
         connections = ConnectionSettings(url: directory.appendingPathComponent("connection.json"))
-        credentials = CredentialStore(service: "\(identity).connections")
+        self.credentials = credentials ?? CredentialStore(service: "\(identity).connections")
+    }
+
+    /// Saving through the Host updates the same session used by every bundled extension.
+    public func savePassword(_ password: String, for target: ConnectionTarget) async throws {
+        try target.validate()
+        try credentials.save(password, for: target.id, allowInteraction: true)
+        try await database.authorize(target, password: password)
+    }
+
+    /// Explicitly reread Keychain; unchanged authentication keeps its client, failure ends the session.
+    public func reauthorize(_ target: ConnectionTarget, allowInteraction: Bool = true) async throws
+    {
+        try target.validate()
+        do {
+            let password = try credentials.read(for: target.id, allowInteraction: allowInteraction)
+            try await database.authorize(target, password: password)
+        } catch {
+            await database.invalidate(target.id)
+            throw error
+        }
     }
 }

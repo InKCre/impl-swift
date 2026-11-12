@@ -1,12 +1,11 @@
 import Foundation
 import PeerCore
 
-extension ConnectionSettings {
+extension PeerHostContext {
     public func saveEdited(
         host: String, port: String, database: String, username: String, tls: ConnectionTarget.TLS,
-        web: String, password: String, name: String = "", previous: ConnectionTarget?,
-        credentials: CredentialStore
-    ) throws -> ConnectionTarget {
+        web: String, password: String, name: String = "", previous: ConnectionTarget?
+    ) async throws -> ConnectionTarget {
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let port = Int(port) else { throw PeerError.invalid("数据库端口无效。") }
         let web = web.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -21,9 +20,12 @@ extension ConnectionSettings {
             name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? host : name.trimmingCharacters(in: .whitespacesAndNewlines))
         try target.validate()
-        if !password.isEmpty { try credentials.save(password, for: target.id) }
-        _ = try credentials.read(for: target.id, allowInteraction: true)
-        try save(target)
+        if !password.isEmpty {
+            try await savePassword(password, for: target)
+        } else {
+            try await reauthorize(target)
+        }
+        try await connections.save(target)
         return target
     }
 }

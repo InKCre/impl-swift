@@ -4,7 +4,7 @@ import PostgresNIO
 
 extension LocalFilesRepository {
     public func submitScan(_ source: DirectorySource) async throws -> Int {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             return try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 _ = try await locked(source.id, on: connection, expected: source.config)
                 return try await SourceJobs.submit(source: source.id, on: connection)
@@ -13,7 +13,7 @@ extension LocalFilesRepository {
     }
 
     public func pendingScans(_ source: DirectorySource) async throws -> [Int] {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 _ = try await locked(source.id, on: connection, expected: source.config)
                 try await connection.query(
@@ -28,7 +28,7 @@ extension LocalFilesRepository {
     }
 
     public func reportIssue(_ message: String, source: DirectorySource) async throws {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 let current = try await locked(source.id, on: connection, expected: source.config)
                 var state = current.state
@@ -42,7 +42,7 @@ extension LocalFilesRepository {
     }
 
     public func claim(_ id: Int, source: DirectorySource) async throws -> SourceJob? {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             return try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 _ = try await locked(source.id, on: connection, expected: source.config)
                 return try await SourceJobs.claim(id, source: source.id, on: connection)
@@ -52,13 +52,13 @@ extension LocalFilesRepository {
 
     public func check(_ job: SourceJob?) async throws {
         try Task.checkCancellation()
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             if let job { try await SourceJobs.check(job, on: client) }
         }
     }
 
     public func close(_ job: SourceJob, status: String, state: DirectoryState) async throws {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             try await SourceJobs.close(
                 job, status: status, state: FileJSON.encode(state), on: client)
         }
@@ -68,7 +68,7 @@ extension LocalFilesRepository {
         _ observation: FileObservation, replacing record: FileRecord?, source: DirectorySource
     ) async throws {
         if let record, !observation.changes(record.metadata) { return }
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 let source = try await locked(source.id, on: connection, expected: source.config)
                 guard let anchor = source.block else { throw PeerError.invalid("目录来源缺少资料锚点。") }
@@ -119,7 +119,7 @@ extension LocalFilesRepository {
     public func finishScan(source: DirectorySource, missing: [FileRecord], state: DirectoryState)
         async throws
     {
-        return try await database.withConnection(for: target, password: password) { client in
+        return try await database.withConnection(for: target, credentials: credentials) { client in
             try await client.withTransaction(logger: PeerDatabase.logger) { connection in
                 let source = try await locked(source.id, on: connection, expected: source.config)
                 guard let anchor = source.block else { throw PeerError.invalid("目录来源缺少资料锚点。") }
