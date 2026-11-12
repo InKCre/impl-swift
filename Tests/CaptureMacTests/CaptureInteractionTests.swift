@@ -14,7 +14,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.test.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         var mainOpened = false
@@ -32,7 +34,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.test.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let old = CaptureRecord(payload: CapturePayload(materials: [Material(text: "旧的已收入记录")]))
@@ -61,7 +65,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.test.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         model.thought = "主窗口中未提交的草稿"
@@ -96,7 +102,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.test.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         await model.receive(
@@ -144,7 +152,8 @@ struct CaptureInteractionTests {
             try? FileManager.default.removeItem(at: directory)
         }
         let writer = JourneyWriter()
-        let model = try CaptureModel(directory: directory, identity: identity, writer: writer)
+        let context = PeerHostContext(identity: identity, directory: directory)
+        let model = try CaptureModel(directory: directory, context: context, writer: writer)
         defer { model.cancelWork() }
         let originalTarget = ConnectionTarget(
             host: "original.test", database: "original", username: "test")
@@ -162,7 +171,15 @@ struct CaptureInteractionTests {
         // Merely opening and cancelling the editor must leave cancelled work dormant.
         await model.sendPending(force: true)
         #expect(await writer.calls.isEmpty)
+        let originalClient = try await context.database.client(
+            for: edited, password: "old-fixture-password")
         try await model.updatePassword("new-fixture-password", for: cancelled)
+        let updatedClient = try await context.database.client(
+            for: edited, credentials: .keychain(context.credentials))
+        #expect(updatedClient !== originalClient)
+        #expect(
+            try await context.database.client(for: edited, password: "old-fixture-password")
+                === updatedClient)
         for _ in 0..<100 where model.records.first?.state != .confirmed {
             try await Task.sleep(for: .milliseconds(10))
         }
@@ -194,7 +211,9 @@ struct CaptureInteractionTests {
             try? FileManager.default.removeItem(at: directory)
         }
         let model = try CaptureModel(
-            directory: directory, identity: identity, writer: JourneyWriter())
+            directory: directory,
+            context: PeerHostContext(identity: identity, directory: directory),
+            writer: JourneyWriter())
         defer { model.cancelWork() }
         let target = ConnectionTarget(host: "fixture.test", database: "inkcre", username: "test")
         model.connection = target
@@ -225,7 +244,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.web.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.web.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let original = ConnectionTarget(
@@ -262,7 +283,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.result.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.result.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let target = ConnectionTarget(
@@ -291,7 +314,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.commands.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.commands.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         #expect(!model.canPerform(.submit, isEditor: true, isQuickPanel: false))
@@ -315,7 +340,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.test.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let material = Material(text: "误采的材料")
@@ -340,7 +367,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.test.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         model.thought = "尚未等到自动保存的中文 👩🏽‍💻"
@@ -369,7 +398,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.test.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         var closed = false
@@ -394,7 +425,9 @@ struct CaptureInteractionTests {
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = try CaptureModel(
-            directory: directory, identity: "dev.inkcre.test.\(UUID().uuidString)",
+            directory: directory,
+            context: PeerHostContext(
+                identity: "dev.inkcre.test.\(UUID().uuidString)", directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { model.cancelWork() }
         let other = CaptureRecord(payload: CapturePayload(materials: [Material(text: "另一份草稿")]))
@@ -420,6 +453,9 @@ private actor JourneyWriter: CaptureWriting {
         let secret: String
     }
     private(set) var calls: [Call] = []
+    func prepare(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws {
+        _ = try credentials.read(for: record.target!.id)
+    }
     func recover(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
         -> CaptureResult?
     {

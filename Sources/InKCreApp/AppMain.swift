@@ -297,7 +297,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         }
         let content = NSHostingView(
             rootView: PeerConnectionEditor(
-                settings: context.connections, credentials: context.credentials,
+                context: context,
                 target: target, saveTitle: onFinished == nil ? "保存" : "保存并返回采集", onCancel: close,
                 onSaved: { [weak self] target in
                     self?.changingConnection = true

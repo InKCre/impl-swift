@@ -67,6 +67,9 @@ public actor CaptureQueue {
                     changed = true
                     continue
                 }
+                if item.attempts == 0 {
+                    try await writer.prepare(outgoing, credentials: .keychain(credentials))
+                }
                 guard !isStopped, !Task.isCancelled else { return changed }
                 var dispatched = try await store.markDispatch(item.id)
                 dispatched.target = connection
@@ -86,6 +89,7 @@ public actor CaptureQueue {
                 try await store.report(item.id, state: state, message: error.localizedDescription)
                 changed = true
             } catch {
+                if PeerDatabase.isCancellation(error) { return changed }
                 try await store.report(
                     item.id, state: .unknown,
                     message: "无法确认响应，原提交已保留。请检查服务版本后重试。"

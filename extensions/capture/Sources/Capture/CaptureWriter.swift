@@ -3,6 +3,8 @@ import PeerCore
 import PostgresNIO
 
 public protocol CaptureWriting: Sendable {
+    /// Prepare authentication before the queue records a possible dispatch.
+    func prepare(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
     func recover(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
         -> CaptureResult?
     func submit(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
@@ -34,6 +36,11 @@ public struct CaptureWriter: CaptureWriting {
     }()
     private let database: PeerDatabase
     public init(database: PeerDatabase) { self.database = database }
+
+    public func prepare(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws {
+        guard let target = record.target else { throw PeerError.invalid("待办缺少目标。") }
+        _ = try await database.client(for: target, credentials: credentials)
+    }
 
     public func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? {
         try await recover(record, credentials: .password(secret))

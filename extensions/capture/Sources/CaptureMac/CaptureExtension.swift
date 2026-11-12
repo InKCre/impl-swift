@@ -96,7 +96,7 @@ public final class CaptureExtension: NSObject, NativeExtension, NSWindowDelegate
         do {
             let model = try CaptureModel(
                 directory: context.directory.appendingPathComponent("extensions/inkcre-capture"),
-                identity: context.identity, connections: context.connections,
+                context: context,
                 writer: CaptureWriter(database: context.database))
             self.model = model
             let panel = CapturePanel(

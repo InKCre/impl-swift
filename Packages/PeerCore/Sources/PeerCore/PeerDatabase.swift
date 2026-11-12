@@ -6,8 +6,6 @@ public actor PeerDatabase {
     public static let logger = Logger(label: "dev.inkcre.database")
     private struct Pool {
         let target: ConnectionTarget
-        let credentials: DatabaseCredentials
-        let revision: CredentialStore.Revision?
         let password: String
         let client: PostgresClient
         let task: Task<Void, Never>
@@ -31,40 +29,34 @@ public actor PeerDatabase {
         try client(for: target, credentials: .password(password))
     }
 
+    /// Bootstrap credentials are ignored once a session exists; only authorize changes its password.
     public func client(for target: ConnectionTarget, credentials: DatabaseCredentials) throws
         -> PostgresClient
     {
         try target.validate()
-        let revision: CredentialStore.Revision?
-        do {
-            if case .keychain(let store) = credentials {
-                revision = try store.revision(for: target.id)
-            } else {
-                revision = nil
+        // An established session owns authentication. Old repositories may still carry old
+        // bootstrap credentials; ordinary work must never turn those into an authentication update.
+        if let pool = pools[target.id] {
+            guard pool.target.hasSameDestination(as: target) else {
+                throw PeerError.invalid("已授权连接不能改投另一个信息库，请创建新连接。")
             }
-        } catch {
-            pools.removeValue(forKey: target.id)?.task.cancel()
-            throw error
+            return pool.client
         }
+        return try authorize(target, password: credentials.read(for: target.id))
+    }
+
+    /// Explicitly replace session authentication. Reusing the same password preserves the client.
+    @discardableResult
+    public func authorize(_ target: ConnectionTarget, password: String) throws -> PostgresClient {
+        try target.validate()
         let previous = pools[target.id]
-        let password: String
-        if let pool = previous, let revision, pool.revision == revision {
-            password = pool.password
-        } else {
-            do {
-                password = try credentials.read(for: target.id)
-            } catch {
-                pools.removeValue(forKey: target.id)?.task.cancel()
-                throw error
-            }
-        }
         if let pool = previous, pool.target.host == target.host,
             pool.target.port == target.port, pool.target.database == target.database,
             pool.target.username == target.username, pool.target.tls == target.tls,
             pool.password == password
         {
             pools[target.id] = Pool(
-                target: target, credentials: credentials, revision: revision,
+                target: target,
                 password: password, client: pool.client, task: pool.task,
                 registered: pool.registered)
             return pool.client
@@ -86,11 +78,16 @@ public actor PeerDatabase {
         let client = PostgresClient(configuration: configuration, backgroundLogger: Self.logger)
         let task = Task { await client.run() }
         pools[target.id] = Pool(
-            target: target, credentials: credentials, revision: revision,
+            target: target,
             password: password, client: client, task: task,
             registered: previous?.registered == true
                 && previous?.target.hasSameDestination(as: target) == true)
         return client
+    }
+
+    /// End this owner's authorization. The next operation must obtain credentials again.
+    public func invalidate(_ connection: UUID) {
+        pools.removeValue(forKey: connection)?.task.cancel()
     }
 
     public func shutdown() async {
@@ -139,6 +136,13 @@ public actor PeerDatabase {
         _ operation: @escaping @Sendable (PostgresConnection) async throws -> Result
     ) async throws -> Result {
         let client = try await client(for: target, credentials: credentials)
+        return try await withConnection(client: client, operation)
+    }
+
+    private nonisolated func withConnection<Result: Sendable>(
+        client: PostgresClient,
+        _ operation: @escaping @Sendable (PostgresConnection) async throws -> Result
+    ) async throws -> Result {
         return try await withThrowingTaskGroup(of: Result.self) { group in
             group.addTask {
                 try await client.withConnection { connection in
@@ -168,9 +172,7 @@ public actor PeerDatabase {
             for (id, pool) in pools where pool.registered {
                 group.addTask {
                     do {
-                        try await self.withConnection(
-                            for: pool.target, credentials: pool.credentials
-                        ) {
+                        try await self.withConnection(client: pool.client) {
                             connection in
                             let rows = try await connection.query(
                                 "SELECT inkcre.renew_peer_lease(\(pool.target.peerID),120)",

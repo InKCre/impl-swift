@@ -52,9 +52,15 @@ struct ConnectionSettingsTests {
         edited.webURL = URL(string: "https://example.test")
         #expect(try await database.client(for: edited, password: "unused") === original)
         edited.username = "new_role"
-        let replaced = try await database.client(for: edited, password: "unused")
+        #expect(try await database.client(for: edited, password: "unused") === original)
+        let replaced = try await database.authorize(edited, password: "unused")
         #expect(replaced !== original)
-        #expect(try await database.client(for: edited, password: "changed") !== replaced)
+        // Bootstrap credentials carried by an old reference cannot replace an authorized session.
+        #expect(try await database.client(for: edited, password: "changed") === replaced)
+        let updated = try await database.authorize(edited, password: "changed")
+        #expect(updated !== replaced)
+        #expect(try await database.client(for: edited, password: "unused") === updated)
+        #expect(try await database.client(for: target, password: "unused") === updated)
         await database.shutdown()
     }
 

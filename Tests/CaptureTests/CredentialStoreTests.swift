@@ -6,7 +6,7 @@ import Testing
 
 @Suite(.serialized)
 struct CredentialStoreTests {
-    private final class Fixture {
+    final class Fixture {
         let directory: URL
         let keychain: SecKeychain
         static let password = "disposable-keychain-password"
@@ -107,32 +107,36 @@ struct CredentialStoreTests {
         #expect(try store.read(for: connection) == "updated-fixture")
     }
 
-    @Test func poolReusesKeychainAuthenticationAndImmediatelyObservesAnotherStoreSaving()
+    @Test func sessionSurvivesKeychainDeletionAndExplicitlySavedPasswordsReplaceIt()
         async throws
     {
         let fixture = try Fixture()
         let service = "dev.inkcre.credentials-test.\(UUID())"
-        let first = CredentialStore(service: service, keychain: fixture.keychain)
-        let second = CredentialStore(service: service, keychain: fixture.keychain)
+        let store = CredentialStore(service: service, keychain: fixture.keychain)
         let target = ConnectionTarget(host: "localhost", database: "unused", username: "peer")
         let database = PeerDatabase()
-        try first.save("first-fixture", for: target.id)
-        let original = try await database.client(for: target, credentials: .keychain(first))
-        for _ in 0..<500 {
-            #expect(
-                try await database.client(for: target, credentials: .keychain(second)) === original)
-        }
+        let context = PeerHostContext(
+            identity: service, directory: fixture.directory, database: database, credentials: store)
+        try store.save("first-fixture", for: target.id)
+        let original = try await database.client(for: target, credentials: .keychain(store))
+        // Saving persistent data alone does not silently change this owner's established session.
+        try store.save("external-fixture", for: target.id)
+        #expect(try await database.client(for: target, credentials: .keychain(store)) === original)
         var renamed = target
         renamed.name = "新名称"
         renamed.webURL = URL(string: "https://example.test")
-        try second.save("first-fixture", for: target.id)
-        #expect(
-            try await database.client(for: renamed, credentials: .keychain(second)) === original)
-        // No timer or timestamp boundary: updates in the same second must replace authentication.
-        try second.save("updated-fixture", for: target.id)
-        let updated = try await database.client(for: target, credentials: .keychain(second))
-        #expect(updated !== original)
-        #expect(try await database.client(for: target, credentials: .keychain(first)) === updated)
+        try await context.savePassword("first-fixture", for: renamed)
+        #expect(try await database.client(for: renamed, credentials: .keychain(store)) === original)
+        try await context.reauthorize(renamed, allowInteraction: false)
+        #expect(try await database.client(for: renamed, credentials: .keychain(store)) === original)
+        try store.save("reauthorized-fixture", for: target.id)
+        try await context.reauthorize(target, allowInteraction: false)
+        let reauthorized = try await database.client(for: target, credentials: .keychain(store))
+        #expect(reauthorized !== original)
+        try await context.savePassword("updated-fixture", for: target)
+        let updated = try await database.client(for: target, credentials: .keychain(store))
+        #expect(updated !== reauthorized)
+        #expect(try await database.client(for: target, password: "first-fixture") === updated)
         #expect(
             try CredentialStore.withAccess(allowInteraction: false) {
                 SecItemDelete(
@@ -142,13 +146,21 @@ struct CredentialStoreTests {
                         kSecMatchSearchList as String: [fixture.keychain],
                     ] as CFDictionary)
             } == errSecSuccess)
+        for _ in 0..<500 {
+            #expect(
+                try await database.client(for: target, credentials: .keychain(store)) === updated)
+        }
         await #expect(throws: PeerError.self) {
-            try await database.client(for: target, credentials: .keychain(first))
+            try await context.reauthorize(target, allowInteraction: false)
+        }
+        // Failed explicit reauthorization does not resurrect the discarded session.
+        await #expect(throws: PeerError.self) {
+            try await database.client(for: target, credentials: .keychain(store))
         }
         await database.shutdown()
     }
 
-    @Test func lockingAKeychainRevokesAnExistingPoolAndUnlockingRestoresIt() async throws {
+    @Test func sessionSurvivesKeychainLockUntilItsOwnerRevokesAuthorization() async throws {
         let fixture = try Fixture()
         let store = CredentialStore(
             service: "dev.inkcre.credentials-test.\(UUID())", keychain: fixture.keychain)
@@ -160,6 +172,8 @@ struct CredentialStoreTests {
             try CredentialStore.withAccess(allowInteraction: false) {
                 SecKeychainLock(fixture.keychain)
             } == errSecSuccess)
+        #expect(try await database.client(for: target, credentials: .keychain(store)) === original)
+        await database.invalidate(target.id)
         await #expect(throws: PeerError.self) {
             try await database.client(for: target, credentials: .keychain(store))
         }
@@ -168,5 +182,4 @@ struct CredentialStoreTests {
         #expect(restored !== original)
         await database.shutdown()
     }
-
 }

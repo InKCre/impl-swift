@@ -125,7 +125,8 @@ struct HostInterfaceTests {
             }
         }
         let captureModel = try CaptureModel(
-            directory: directory.appendingPathComponent("capture"), identity: domain,
+            directory: directory.appendingPathComponent("capture"),
+            context: PeerHostContext(identity: domain, directory: directory),
             writer: CaptureWriter(database: PeerDatabase()))
         defer { captureModel.cancelWork() }
         window.replaceCaptureSettings(
