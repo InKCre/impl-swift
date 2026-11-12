@@ -420,11 +420,17 @@ private actor JourneyWriter: CaptureWriting {
         let secret: String
     }
     private(set) var calls: [Call] = []
-    func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? {
+    func recover(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+        -> CaptureResult?
+    {
+        let secret = try credentials.read(for: record.target!.id)
         calls.append(Call(kind: "recover", record: record, secret: secret))
         return nil
     }
-    func submit(_ record: CaptureRecord, secret: String) async throws -> CaptureResult {
+    func submit(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+        -> CaptureResult
+    {
+        let secret = try credentials.read(for: record.target!.id)
         calls.append(Call(kind: "submit", record: record, secret: secret))
         return CaptureResult(
             submissionID: record.id, rootBlockID: 42, committedAt: Date())

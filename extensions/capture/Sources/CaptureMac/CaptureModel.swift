@@ -447,7 +447,7 @@ final class CaptureModel: ObservableObject {
             let current = try await store.record(record.id),
             let target = current.target, current.state != .draft, current.state != .confirmed
         else { throw PeerError.invalid("这条记录已变更，请关闭后重新查看。") }
-        try credentials.save(password, for: target.id)
+        try credentials.save(password, for: target.id, allowInteraction: true)
         try await store.retry(current.id)
         try await refresh()
         perform { [self] in await sendPending(force: true) }

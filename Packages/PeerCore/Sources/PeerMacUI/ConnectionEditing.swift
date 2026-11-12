@@ -21,7 +21,9 @@ extension ConnectionSettings {
             name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? host : name.trimmingCharacters(in: .whitespacesAndNewlines))
         try target.validate()
-        if !password.isEmpty { try credentials.save(password, for: target.id) }
+        if !password.isEmpty {
+            try credentials.save(password, for: target.id, allowInteraction: true)
+        }
         _ = try credentials.read(for: target.id, allowInteraction: true)
         try save(target)
         return target

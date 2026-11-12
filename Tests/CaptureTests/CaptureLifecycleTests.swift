@@ -11,7 +11,9 @@ private actor PausedRecovery: CaptureWriting {
     private var arrival: CheckedContinuation<Void, Never>?
     private var release: CheckedContinuation<Void, Never>?
     private(set) var dispatches = 0
-    func recover(_ record: CaptureRecord, secret: String) async throws -> CaptureResult? {
+    func recover(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+        -> CaptureResult?
+    {
         if let pausedTarget, record.target?.id != pausedTarget {
             return CaptureResult(submissionID: record.id, rootBlockID: 123, committedAt: Date())
         }
@@ -23,7 +25,9 @@ private actor PausedRecovery: CaptureWriting {
         }
         return nil
     }
-    func submit(_ record: CaptureRecord, secret: String) async throws -> CaptureResult {
+    func submit(_ record: CaptureRecord, credentials: DatabaseCredentials) async throws
+        -> CaptureResult
+    {
         dispatches += 1
         throw PeerError.invalid("must not dispatch after stop")
     }

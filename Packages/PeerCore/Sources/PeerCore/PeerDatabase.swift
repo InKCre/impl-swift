@@ -6,6 +6,8 @@ public actor PeerDatabase {
     public static let logger = Logger(label: "dev.inkcre.database")
     private struct Pool {
         let target: ConnectionTarget
+        let credentials: DatabaseCredentials
+        let revision: CredentialStore.Revision?
         let password: String
         let client: PostgresClient
         let task: Task<Void, Never>
@@ -26,15 +28,48 @@ public actor PeerDatabase {
     }
 
     public func client(for target: ConnectionTarget, password: String) throws -> PostgresClient {
+        try client(for: target, credentials: .password(password))
+    }
+
+    public func client(for target: ConnectionTarget, credentials: DatabaseCredentials) throws
+        -> PostgresClient
+    {
         try target.validate()
-        if let pool = pools[target.id], pool.target.host == target.host,
+        let revision: CredentialStore.Revision?
+        do {
+            if case .keychain(let store) = credentials {
+                revision = try store.revision(for: target.id)
+            } else {
+                revision = nil
+            }
+        } catch {
+            pools.removeValue(forKey: target.id)?.task.cancel()
+            throw error
+        }
+        let previous = pools[target.id]
+        let password: String
+        if let pool = previous, let revision, pool.revision == revision {
+            password = pool.password
+        } else {
+            do {
+                password = try credentials.read(for: target.id)
+            } catch {
+                pools.removeValue(forKey: target.id)?.task.cancel()
+                throw error
+            }
+        }
+        if let pool = previous, pool.target.host == target.host,
             pool.target.port == target.port, pool.target.database == target.database,
             pool.target.username == target.username, pool.target.tls == target.tls,
             pool.password == password
         {
+            pools[target.id] = Pool(
+                target: target, credentials: credentials, revision: revision,
+                password: password, client: pool.client, task: pool.task,
+                registered: pool.registered)
             return pool.client
         }
-        let previous = pools.removeValue(forKey: target.id)
+        pools.removeValue(forKey: target.id)
         previous?.task.cancel()
         var configuration = PostgresClient.Configuration(
             host: target.host, port: target.port, username: target.username, password: password,
@@ -51,7 +86,8 @@ public actor PeerDatabase {
         let client = PostgresClient(configuration: configuration, backgroundLogger: Self.logger)
         let task = Task { await client.run() }
         pools[target.id] = Pool(
-            target: target, password: password, client: client, task: task,
+            target: target, credentials: credentials, revision: revision,
+            password: password, client: client, task: task,
             registered: previous?.registered == true
                 && previous?.target.hasSameDestination(as: target) == true)
         return client
@@ -65,12 +101,17 @@ public actor PeerDatabase {
     }
 
     public func register(_ target: ConnectionTarget, password: String) async throws {
-        let client = try client(for: target, password: password)
+        try await register(target, credentials: .password(password))
+    }
+
+    public func register(_ target: ConnectionTarget, credentials: DatabaseCredentials) async throws
+    {
+        let client = try client(for: target, credentials: credentials)
         if pools[target.id]?.registered == true { return }
         let name = self.name
         let labels = self.labels
         let applicationVersion = self.applicationVersion
-        try await withConnection(for: target, password: password) { connection in
+        try await withConnection(for: target, credentials: credentials) { connection in
             try await connection.withTransaction(logger: Self.logger) { connection in
                 try await connection.query(
                     """
@@ -90,7 +131,14 @@ public actor PeerDatabase {
         for target: ConnectionTarget, password: String,
         _ operation: @escaping @Sendable (PostgresConnection) async throws -> Result
     ) async throws -> Result {
-        let client = try await client(for: target, password: password)
+        try await withConnection(for: target, credentials: .password(password), operation)
+    }
+
+    public nonisolated func withConnection<Result: Sendable>(
+        for target: ConnectionTarget, credentials: DatabaseCredentials,
+        _ operation: @escaping @Sendable (PostgresConnection) async throws -> Result
+    ) async throws -> Result {
+        let client = try await client(for: target, credentials: credentials)
         return try await withThrowingTaskGroup(of: Result.self) { group in
             group.addTask {
                 try await client.withConnection { connection in
@@ -120,7 +168,9 @@ public actor PeerDatabase {
             for (id, pool) in pools where pool.registered {
                 group.addTask {
                     do {
-                        try await self.withConnection(for: pool.target, password: pool.password) {
+                        try await self.withConnection(
+                            for: pool.target, credentials: pool.credentials
+                        ) {
                             connection in
                             let rows = try await connection.query(
                                 "SELECT inkcre.renew_peer_lease(\(pool.target.peerID),120)",

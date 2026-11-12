@@ -107,7 +107,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
                     try await reloadConnections()
                     if let target = connection {
                         try await context.database.register(
-                            target, password: context.credentials.read(for: target.id))
+                            target, credentials: .keychain(context.credentials))
                     }
                     connectionIssue = nil
                 } catch { connectionIssue = PeerDatabase.failure(error).localizedDescription }
@@ -253,7 +253,7 @@ final class PeerHost: NSObject, NSApplicationDelegate, ObservableObject, NSUserI
         do {
             try await context.database.useBundledVersion(
                 descriptor, target: connection,
-                password: context.credentials.read(for: connection.id))
+                credentials: .keychain(context.credentials))
             await localFiles.model.refresh()
         } catch { throw PeerDatabase.failure(error) }
     }

@@ -57,11 +57,11 @@ public actor CaptureQueue {
             guard let target = item.target else { continue }
             do {
                 let connection = try await connections.resolve(target)
-                let secret = try credentials.read(for: connection.id)
                 var outgoing = item
                 outgoing.target = connection
                 if item.attempts > 0,
-                    let result = try await writer.recover(outgoing, secret: secret)
+                    let result = try await writer.recover(
+                        outgoing, credentials: .keychain(credentials))
                 {
                     try await store.confirm(item.id, result: result)
                     changed = true
@@ -72,7 +72,8 @@ public actor CaptureQueue {
                 dispatched.target = connection
                 changed = true
                 guard !isStopped, !Task.isCancelled else { return changed }
-                let result = try await writer.submit(dispatched, secret: secret)
+                let result = try await writer.submit(
+                    dispatched, credentials: .keychain(credentials))
                 try await store.confirm(item.id, result: result)
             } catch let error as PeerError {
                 let state: CaptureRecord.State
